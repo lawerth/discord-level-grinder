@@ -1,0 +1,16 @@
+{
+  "main": "index.js",
+  "name": "discord-level-grinder",
+  "version": "1.0.0",
+  "description": "",
+  "author": "",
+  "license": "ISC",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js-selfbot-v13": "^3.6.1"
+  },
+  "devDependencies": {}
+}
