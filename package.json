@@ -2,9 +2,9 @@
   "main": "index.js",
   "name": "discord-level-grinder",
   "version": "1.0.0",
-  "description": "",
-  "author": "",
-  "license": "ISC",
+  "description": "Level grinding automation on Discord.",
+  "author": "lawerth",
+  "license": "MIT",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node index.js"

@@ -4,7 +4,6 @@ const path = require('path');
 const config = require('./config.json');
 const sentences = require('./sentences.json');
 
-// ✅ Config validation
 if (!Array.isArray(config.tokens) || config.tokens.length === 0) {
     console.error('❌ [ERROR] No tokens found in config.json. Please add at least one token.');
     process.exit(1);
@@ -30,11 +29,9 @@ if (typeof config.prefix !== 'string' || config.prefix.length === 0) {
     process.exit(1);
 }
 
-// 📦 Load settings
 const INTERVAL = config.interval * 1000;
 const { tokens, channels, adminID, prefix } = config;
 
-// 🔌 Load commands
 const commands = new Map();
 const commandFiles = fs.readdirSync(path.join(__dirname, 'commands')).filter(file => file.endsWith('.js'));
 for (const file of commandFiles) {
@@ -42,7 +39,6 @@ for (const file of commandFiles) {
     commands.set(command.name, command);
 }
 
-// 🔁 Start a bot instance for each token
 tokens.forEach((token, index) => {
     const client = new Client();
 
