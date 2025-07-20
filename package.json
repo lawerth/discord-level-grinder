@@ -11,6 +11,5 @@
   },
   "dependencies": {
     "discord.js-selfbot-v13": "^3.6.1"
-  },
-  "devDependencies": {}
+  }
 }

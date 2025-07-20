@@ -29,6 +29,10 @@ if (typeof config.prefix !== 'string' || config.prefix.length === 0) {
     process.exit(1);
 }
 
+const specialMessages = Array.isArray(config.specialMessages) ? config.specialMessages : [];
+
+const delayPerClientSec = typeof config.specialMessageStartDelayPerClient === 'number' ? config.specialMessageStartDelayPerClient : 0;
+
 const INTERVAL = config.interval * 1000;
 const { tokens, channels, adminID, prefix } = config;
 
@@ -42,15 +46,54 @@ for (const file of commandFiles) {
 tokens.forEach((token, index) => {
     const client = new Client();
 
-    // Per-client state
     let isPaused = false;
     let nextMessageTime = Date.now() + INTERVAL;
     let messageCount = 0;
     let lastChannelID = null;
     let lastMessageTime = null;
 
+    const specialMessageStates = specialMessages.map(msg => ({
+        countSent: 0,
+        intervalId: null,
+        startTimeoutId: null,
+        ...msg,
+        intervalMs: msg.interval * 1000,
+        startAfterMs: (msg.startAfter ?? 0) * 1000
+    }));
+
     client.on('ready', () => {
         console.log(`[${index + 1}] Logged in as ${client.user.username}.`);
+
+        specialMessageStates.forEach((msgState) => {
+            const delay = msgState.startAfterMs + index * delayPerClientSec * 1000;
+
+            msgState.startTimeoutId = setTimeout(() => {
+                if (msgState.countSent >= msgState.count) return;
+
+                msgState.intervalId = setInterval(() => {
+                    if (isPaused) return;
+                    if (msgState.countSent >= msgState.count) {
+                        clearInterval(msgState.intervalId);
+                        return;
+                    }
+
+                    const randomChannelId = channels[Math.floor(Math.random() * channels.length)];
+                    const channel = client.channels.cache.get(randomChannelId);
+
+                    if (!channel) {
+                        console.error(`[${index + 1}] Channel not found: ${randomChannelId}`);
+                        return;
+                    }
+
+                    channel.send(msgState.text).then(() => {
+                        msgState.countSent++;
+                    }).catch(err => {
+                        console.error(`[${index + 1}] Failed to send special message (${randomChannelId}):`, err.message);
+                    });
+                }, msgState.intervalMs);
+
+            }, delay);
+        });
 
         setInterval(() => {
             if (isPaused) return;

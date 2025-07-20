@@ -1,8 +1,16 @@
 {
-    "tokens": [],
-    "channels": [],
-    "interval": 60,
-    "adminID": "",
-    "prefix": "!"
-  }
-  
+  "tokens": ["your_token_here"],
+  "channels": ["channel_id_1", "channel_id_2"],
+  "interval": 60,
+  "adminID": "your_discord_id",
+  "prefix": "!",
+  "specialMessages": [
+    {
+      "content": "Hello!",
+      "startAfter": 3600,
+      "repeat": 3,
+      "interval": 60
+    }
+  ],
+  "specialMessageStartDelayPerClient": 10
+}
