@@ -9,8 +9,9 @@
       "content": "Hello!",
       "startAfter": 3600,
       "repeat": 3,
-      "interval": 60
+      "interval": 60,
+      "channelId": "optional_channel_id",
+      "perClientDelay": 10
     }
-  ],
-  "specialMessageStartDelayPerClient": 10
+  ]
 }

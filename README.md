@@ -8,16 +8,18 @@ A multi-token, fully customizable Discord selfbot script to help you level up au
 
 ## 🔧 Features
 
-- ✅ Multi-token support (each token runs as a separate selfbot)
-- 📩 Sends random sentences from a file at a fixed interval
-- 💬 Supports **special messages** with:
-  - Custom message text
-  - Scheduled start time
-  - Repeat count and interval
-- ⏸ Pause/resume functionality via command
-- 📊 Token-specific stats (sent messages, last channel, etc.)
-- 🧠 Individual state handling per token
-- ⏱ Adjustable delay per token to prevent synchronized messages
+* ✅ Multi-token support (each token runs as a separate selfbot)
+* 📩 Sends random sentences from a separate `sentences.json` file at fixed intervals
+* 💬 Supports **special messages** with:
+
+  * Custom message content
+  * Scheduled start delay (`startAfter`)
+  * Repeat count and interval between repeats
+  * Optional target channel per special message
+* ⏸ Pause/resume functionality via admin commands
+* 📊 Token-specific stats (sent message count, last channel used, last message time)
+* 🧠 Individual state handling per token
+* ⚙️ Rate-limited sending queue per client to avoid hitting Discord limits
 
 ---
 
@@ -37,26 +39,32 @@ Edit `config.json`:
       "content": "Hello!",
       "startAfter": 3600,
       "repeat": 3,
-      "interval": 60
+      "interval": 60,
+      "channelId": "optional_channel_id",
+      "perClientDelay": 10
     }
-  ],
-  "specialMessageStartDelayPerClient": 10
+  ]
 }
 ```
 
-### Options
+### Configuration Options
 
-| Key                             | Type     | Required | Description                                                  |
-|----------------------------------|----------|----------|--------------------------------------------------------------|
-| `tokens`                        | array    | ✅       | List of user tokens to run selfbots                         |
-| `channels`                      | array    | ✅       | List of channel IDs to send messages to                    |
-| `interval`                      | number   | ✅       | Interval (in seconds) between each message                 |
-| `adminID`                       | string   | ✅       | Your Discord user ID (for command control)                 |
-| `prefix`                        | string   | ✅       | Command prefix (e.g., `"!"`)                                |
-| `specialMessages`              | array    | ❌       | Optional list of scheduled messages                         |
-| `specialMessageStartDelayPerClient` | number | ❌       | Extra delay (in seconds) per token to desync message times |
+| Key                                | Type   | Required                    | Description                                              |
+| ---------------------------------- | ------ | --------------------------- | -------------------------------------------------------- |
+| `tokens`                           | array  | ✅                           | List of user tokens to run the selfbots                  |
+| `channels`                         | array  | ✅                           | List of channel IDs for random message sending           |
+| `interval`                         | number | ✅                           | Interval in seconds between random messages              |
+| `adminID`                          | string | ✅                           | Discord user ID allowed to run commands                  |
+| `prefix`                           | string | ✅                           | Command prefix (e.g. `"!"`)                              |
+| `specialMessages`                  | array  | ❌                           | Optional list of special scheduled messages              |
+| `specialMessages[].content`        | string | ✅ (if specialMessages used) | Message text to send                                     |
+| `specialMessages[].startAfter`     | number | ✅ (if specialMessages used) | Delay in seconds before first send                       |
+| `specialMessages[].repeat`         | number | ✅ (if specialMessages used) | How many times to send the message                       |
+| `specialMessages[].interval`       | number | ✅ (if specialMessages used) | Interval in seconds between each repeat                  |
+| `specialMessages[].channelId`      | string | ❌                           | Optional specific channel ID for this special message    |
+| `specialMessages[].perClientDelay` | number | ❌                           | Extra delay in seconds per client index to desync starts |
 
-> 📝 Random messages are loaded from `sentences.json`.
+> 📝 Random sentences are loaded from a separate `sentences.json` file in the project root.
 
 ---
 
@@ -71,18 +79,18 @@ npm start
 
 ---
 
-## 💡 Example Commands
+## 💡 Available Commands
 
-Commands are available only to the configured `adminID` and must be sent using the defined `prefix`.
+Only the configured admin (via `adminID`) can use these commands by sending messages starting with the defined `prefix`:
 
-| Command      | Description                     |
-|--------------|---------------------------------|
-| `!pause`     | Pause automated messaging       |
-| `!resume`    | Resume automated messaging      |
-| `!stats`     | Show message statistics         |
+| Command   | Description                                                  |
+| --------- | ------------------------------------------------------------ |
+| `!pause`  | Pause all automated messaging for all tokens                 |
+| `!resume` | Resume messaging                                             |
+| `!stats`  | Show stats like sent message counts, last used channel, etc. |
 
 ---
 
 ## 🚨 Disclaimer
 
-This project is intended for **educational purposes** only. Automation using selfbots is against Discord’s Terms of Service. The developer is **not responsible** for any misuse.
+This project is **for educational purposes only**. Using selfbots is against Discord’s Terms of Service and may result in account bans. The developer is **not responsible** for misuse.
