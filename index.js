@@ -94,7 +94,7 @@ for (const file of commandFiles) {
         let specialSentCount = new Map();
 
         client.on('ready', () => {
-            console.log(`[${index + 1}] Logged in as ${client.user.username}.`);
+            console.log(`[${index + 1}] Logged in as ${client.user.username}`);
 
             const initialDelay = Math.floor(Math.random() * INTERVAL);
 
@@ -111,10 +111,13 @@ for (const file of commandFiles) {
                             console.error(`[${index + 1}] Channel not found: ${randomChannelId}`);
                             return;
                         }
-                        await channel.send(randomSentence);
-                        messageCount++;
-                        lastChannelID = randomChannelId;
-                        lastMessageTime = Date.now();
+                        
+                        try {
+                            await channel.send(randomSentence);
+                            messageCount++;
+                            lastChannelID = randomChannelId;
+                            lastMessageTime = Date.now();
+                        } catch {}
                     });
                 };
 
@@ -186,6 +189,7 @@ for (const file of commandFiles) {
             timers.specialMessageIntervals.forEach(iid => clearInterval(iid));
         };
 
+        process.setMaxListeners(1000)
         process.on('exit', () => {
             clearAllTimers();
             client.destroy();
@@ -232,6 +236,6 @@ for (const file of commandFiles) {
     console.log('────────────────────────────────');
     console.log(`✅ ${successCount}/${totalCount} accounts successfully logged in.`);
     if (successCount < totalCount) {
-        console.log(`❌ ${totalCount - successCount} token geçersiz.`);
+        console.log(`❌ ${totalCount - successCount} tokens invalid.`);
     }
 })();

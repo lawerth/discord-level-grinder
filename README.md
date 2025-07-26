@@ -23,6 +23,17 @@ A multi-token, fully customizable Discord selfbot script to help you level up au
 
 ---
 
+## 📦 Installation
+
+```bash
+git clone https://github.com/lawerth/discord-level-grinder.git
+cd discord-level-grinder
+npm install
+npm start
+```
+
+---
+
 ## ⚙️ Configuration
 
 Edit `config.json`:
@@ -65,17 +76,6 @@ Edit `config.json`:
 | `specialMessages[].perClientDelay` | number | ❌                           | Extra delay in seconds per client index to desync starts |
 
 > 📝 Random sentences are loaded from a separate `sentences.json` file in the project root.
-
----
-
-## 📦 Installation
-
-```bash
-git clone https://github.com/lawerth/discord-level-grinder.git
-cd discord-level-grinder
-npm install
-npm start
-```
 
 ---
 
