@@ -35,7 +35,6 @@ const { tokens, channels, adminID, prefix, specialMessages = [] } = config;
 let successCount = 0;
 const totalCount = tokens.length;
 
-// Rate limit kuyruğu sınıfı
 class RateLimitedQueue {
     constructor(delay = 1500) {
         this.queue = [];
@@ -232,7 +231,6 @@ for (const file of commandFiles) {
         }
     }
 
-    // Giriş özetini yaz
     console.log('────────────────────────────────');
     console.log(`✅ ${successCount}/${totalCount} accounts successfully logged in.`);
     if (successCount < totalCount) {
