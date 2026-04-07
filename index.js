@@ -234,7 +234,7 @@ for (const file of commandFiles) {
         }
     }
 
-    console.log('────────────────────────────────');
+    console.log('──────────────────────────────────────');
     Logger.success(`${successCount}/${totalCount} accounts successfully logged in.`);
     if (successCount < totalCount) {
         Logger.error(`${totalCount - successCount} tokens invalid.`);
