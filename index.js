@@ -3,29 +3,30 @@ const fs = require('fs');
 const path = require('path');
 const config = require('./config.json');
 const sentences = require('./sentences.json');
+const Logger = require('./logger');
 
 if (!Array.isArray(config.tokens) || config.tokens.length === 0) {
-    console.error('❌ [ERROR] No tokens found in config.json. Please add at least one token.');
+    Logger.error('No tokens found in config.json. Please add at least one token.');
     process.exit(1);
 }
 
 if (!Array.isArray(config.channels) || config.channels.length === 0) {
-    console.error('❌ [ERROR] No channel IDs found in config.json. Please add at least one channel ID.');
+    Logger.error('No channel IDs found in config.json. Please add at least one channel ID.');
     process.exit(1);
 }
 
 if (typeof config.interval !== 'number' || config.interval <= 0) {
-    console.error('❌ [ERROR] "interval" must be a valid number in config.json (in seconds).');
+    Logger.error('"interval" must be a valid number in config.json (in seconds).');
     process.exit(1);
 }
 
 if (typeof config.adminID !== 'string' || config.adminID.length === 0) {
-    console.error('❌ [ERROR] "adminID" must be a valid string in config.json.');
+    Logger.error('"adminID" must be a valid string in config.json.');
     process.exit(1);
 }
 
 if (typeof config.prefix !== 'string' || config.prefix.length === 0) {
-    console.error('❌ [ERROR] "prefix" must be a valid string in config.json.');
+    Logger.error('"prefix" must be a valid string in config.json.');
     process.exit(1);
 }
 
@@ -56,7 +57,7 @@ class RateLimitedQueue {
             try {
                 await fn();
             } catch (err) {
-                console.error('Queue task error:', err);
+                Logger.error(`Queue task error: ${err.message}`);
             }
             await new Promise(r => setTimeout(r, this.delay));
         }
@@ -93,7 +94,7 @@ for (const file of commandFiles) {
         let specialSentCount = new Map();
 
         client.on('ready', () => {
-            console.log(`[${index + 1}] Logged in as ${client.user.username}`);
+            Logger.success(`[${index + 1}] Logged in as ${client.user.username}`);
 
             const initialDelay = Math.floor(Math.random() * INTERVAL);
 
@@ -107,7 +108,7 @@ for (const file of commandFiles) {
                     sendQueue.enqueue(async () => {
                         const channel = await client.channels.fetch(randomChannelId).catch(() => null);
                         if (!channel) {
-                            console.error(`[${index + 1}] Channel not found: ${randomChannelId}`);
+                            Logger.error(`[${index + 1}] Channel not found: ${randomChannelId}`);
                             return;
                         }
                         
@@ -137,7 +138,7 @@ for (const file of commandFiles) {
                     typeof repeat !== 'number' || repeat <= 0 ||
                     typeof interval !== 'number' || interval <= 0
                 ) {
-                    console.error(`[${index + 1}] Invalid special message config at index ${i}. Skipping.`);
+                    Logger.error(`[${index + 1}] Invalid special message config at index ${i}. Skipping.`);
                     return;
                 }
 
@@ -162,7 +163,7 @@ for (const file of commandFiles) {
                         sendQueue.enqueue(async () => {
                             const targetChannel = await client.channels.fetch(targetChannelId).catch(() => null);
                             if (!targetChannel) {
-                                console.error(`[${index + 1}] Special message channel not found: ${targetChannelId}`);
+                                Logger.error(`[${index + 1}] Special message channel not found: ${targetChannelId}`);
                                 return;
                             }
                             await targetChannel.send(content);
@@ -217,7 +218,7 @@ for (const file of commandFiles) {
                         sendQueue
                     });
                 } catch (err) {
-                    console.error(`Command error: ${cmd}`, err);
+                    Logger.error(`Command error: ${cmd} - ${err.message}`);
                     await message.reply('❌ An error occurred while executing the command.');
                 }
             }
@@ -227,13 +228,13 @@ for (const file of commandFiles) {
             await client.login(token.trim());
             successCount++;
         } catch (err) {
-            console.error(`[${index + 1}] Token login failed:`, err.message);
+            Logger.error(`[${index + 1}] Token login failed: ${err.message}`);
         }
     }
 
     console.log('────────────────────────────────');
-    console.log(`✅ ${successCount}/${totalCount} accounts successfully logged in.`);
+    Logger.success(`${successCount}/${totalCount} accounts successfully logged in.`);
     if (successCount < totalCount) {
-        console.log(`❌ ${totalCount - successCount} tokens invalid.`);
+        Logger.error(`${totalCount - successCount} tokens invalid.`);
     }
 })();
