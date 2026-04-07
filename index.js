@@ -5,6 +5,8 @@ const config = require('./config.json');
 const sentences = require('./sentences.json');
 const Logger = require('./logger');
 
+console.clear();
+
 if (!Array.isArray(config.tokens) || config.tokens.length === 0) {
     Logger.error('No tokens found in config.json. Please add at least one token.');
     process.exit(1);
