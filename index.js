@@ -84,15 +84,7 @@ for (const file of commandFiles) {
 (async () => {
     for (let index = 0; index < tokens.length; index++) {
         const token = tokens[index];
-        const client = new Client({
-            intents: [],
-            makeCache: (manager) => {
-                // Limit cache sizes to prevent memory bloat
-                if (manager.name === 'MessageManager') return new manager.constructor(client, manager.channel);
-                if (manager.name === 'UserManager') return new manager.constructor(client);
-                return new Map();
-            }
-        });
+        const client = new Client({}); // Remove intents and makeCache to avoid errors
         clients.push(client);
 
         const sendQueue = new RateLimitedQueue(1500);
