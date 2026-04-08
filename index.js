@@ -37,15 +37,21 @@ const { tokens, channels, adminID, prefix, specialMessages = [] } = config;
 
 let successCount = 0;
 const totalCount = tokens.length;
+const clients = [];
 
 class RateLimitedQueue {
-    constructor(delay = 1500) {
+    constructor(delay = 1500, maxSize = 1000) {
         this.queue = [];
         this.running = false;
         this.delay = delay;
+        this.maxSize = maxSize;
     }
 
     enqueue(fn) {
+        if (this.queue.length >= this.maxSize) {
+            Logger.warning('Queue max size reached, dropping task to prevent memory leak.');
+            return;
+        }
         this.queue.push(fn);
         this.run();
     }
@@ -78,7 +84,16 @@ for (const file of commandFiles) {
 (async () => {
     for (let index = 0; index < tokens.length; index++) {
         const token = tokens[index];
-        const client = new Client();
+        const client = new Client({
+            intents: [],
+            makeCache: (manager) => {
+                // Limit cache sizes to prevent memory bloat
+                if (manager.name === 'MessageManager') return new manager.constructor(client, manager.channel);
+                if (manager.name === 'UserManager') return new manager.constructor(client);
+                return new Map();
+            }
+        });
+        clients.push(client);
 
         const sendQueue = new RateLimitedQueue(1500);
 
@@ -97,6 +112,20 @@ for (const file of commandFiles) {
 
         client.on('ready', () => {
             Logger.success(`[${index + 1}] Logged in as ${client.user.username}`);
+            startTimers();
+        });
+
+        const clearAllTimers = () => {
+            if (timers.randomMessageTimeout) clearTimeout(timers.randomMessageTimeout);
+            if (timers.randomMessageInterval) clearInterval(timers.randomMessageInterval);
+            timers.specialMessageTimeouts.forEach(tid => clearTimeout(tid));
+            timers.specialMessageIntervals.forEach(iid => clearInterval(iid));
+            timers.specialMessageTimeouts = [];
+            timers.specialMessageIntervals = [];
+        };
+
+        const startTimers = () => {
+            if (isPaused) return; 
 
             const initialDelay = Math.floor(Math.random() * INTERVAL);
 
@@ -182,19 +211,12 @@ for (const file of commandFiles) {
 
                 timers.specialMessageTimeouts.push(timeoutId);
             });
-        });
-
-        const clearAllTimers = () => {
-            if (timers.randomMessageTimeout) clearTimeout(timers.randomMessageTimeout);
-            if (timers.randomMessageInterval) clearInterval(timers.randomMessageInterval);
-            timers.specialMessageTimeouts.forEach(tid => clearTimeout(tid));
-            timers.specialMessageIntervals.forEach(iid => clearInterval(iid));
         };
 
         process.setMaxListeners(1000)
         process.on('exit', () => {
             clearAllTimers();
-            client.destroy();
+            clients.forEach(client => client.destroy());
         });
 
         client.on('messageCreate', async (message) => {
@@ -213,6 +235,7 @@ for (const file of commandFiles) {
                         isPaused,
                         setPaused: v => isPaused = v,
                         clearAllTimers,
+                        startTimers,
                         messageCount,
                         lastChannelID,
                         lastMessageTime,
