@@ -38,9 +38,7 @@ const { tokens, channels, adminID, prefix, specialMessages = [] } = config;
 let successCount = 0;
 const totalCount = tokens.length;
 const clients = [];
-const allTimerCleanups = []; // Track all timer cleanup functions
-
-// Channel cache sweep interval (every 10 minutes)
+const allTimerCleanups = [];
 const CACHE_SWEEP_INTERVAL = 10 * 60 * 1000;
 
 class RateLimitedQueue {
@@ -89,7 +87,6 @@ for (const file of commandFiles) {
     commands.set(command.name.toLowerCase(), command);
 }
 
-// ── Graceful shutdown (registered ONCE, outside the loop) ──
 let isShuttingDown = false;
 
 function gracefulShutdown(signal) {
@@ -97,19 +94,16 @@ function gracefulShutdown(signal) {
     isShuttingDown = true;
     Logger.warning(`Received ${signal}. Shutting down gracefully...`);
 
-    // Clear all timers for all clients
     for (const cleanup of allTimerCleanups) {
         cleanup();
     }
 
-    // Destroy all clients
     for (const client of clients) {
         try {
             client.destroy();
-        } catch {}
+        } catch { }
     }
 
-    // Clear the clients array
     clients.length = 0;
 
     process.exit(0);
@@ -118,8 +112,6 @@ function gracefulShutdown(signal) {
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('exit', () => {
-    // Last resort cleanup - timers won't fire after exit anyway,
-    // but we release object references
     for (const cleanup of allTimerCleanups) {
         cleanup();
     }
@@ -161,11 +153,9 @@ process.on('exit', () => {
             timers.specialMessageTimeouts = [];
             timers.specialMessageIntervals = [];
 
-            // Also clear any pending queue tasks when pausing
             sendQueue.clear();
         };
 
-        // Register this client's cleanup function globally
         allTimerCleanups.push(() => {
             clearAllTimers();
             if (timers.cacheSweepInterval) {
@@ -177,8 +167,6 @@ process.on('exit', () => {
         const startTimers = () => {
             if (isPaused) return;
 
-            // IMPORTANT: Clear existing timers before starting new ones
-            // to prevent timer stacking on multiple resume calls
             clearAllTimers();
 
             const initialDelay = Math.floor(Math.random() * INTERVAL);
@@ -203,7 +191,7 @@ process.on('exit', () => {
                             messageCount++;
                             lastChannelID = randomChannelId;
                             lastMessageTime = Date.now();
-                        } catch {}
+                        } catch { }
                     });
                 };
 
@@ -278,10 +266,8 @@ process.on('exit', () => {
             });
         };
 
-        // ── Periodic channel cache sweep to prevent unbounded growth ──
         timers.cacheSweepInterval = setInterval(() => {
             const before = client.channels.cache.size;
-            // Only keep channels that are in our config
             const channelSet = new Set(channels);
             client.channels.cache.sweep(ch => !channelSet.has(ch.id));
             const after = client.channels.cache.size;
@@ -296,7 +282,6 @@ process.on('exit', () => {
         });
 
         client.on('messageCreate', async (message) => {
-            // Fast bail-out: skip messages not from admin as early as possible
             if (message.author.id !== adminID) return;
             if (!message.content.startsWith(prefix)) return;
 
@@ -323,7 +308,7 @@ process.on('exit', () => {
                     Logger.error(`Command error: ${cmd} - ${err.message}`);
                     try {
                         await message.reply('❌ An error occurred while executing the command.');
-                    } catch {}
+                    } catch { }
                 }
             }
         });
