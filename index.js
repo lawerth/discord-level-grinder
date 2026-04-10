@@ -1,4 +1,4 @@
-const { Client } = require('discord.js-selfbot-v13');
+const { Client, Options } = require('discord.js-selfbot-v13');
 const fs = require('fs');
 const path = require('path');
 const config = require('./config.json');
@@ -39,7 +39,7 @@ let successCount = 0;
 const totalCount = tokens.length;
 const clients = [];
 const allTimerCleanups = [];
-const CACHE_SWEEP_INTERVAL = 10 * 60 * 1000;
+const CACHE_SWEEP_INTERVAL = 5 * 60 * 1000;
 
 class RateLimitedQueue {
     constructor(delay = 1500, maxSize = 1000) {
@@ -120,7 +120,24 @@ process.on('exit', () => {
 (async () => {
     for (let index = 0; index < tokens.length; index++) {
         const token = tokens[index];
-        const client = new Client({});
+        const client = new Client({
+            sweepInterval: 300,
+            makeCache: Options.cacheWithLimits({
+                MessageManager: 50,
+                GuildMemberManager: 0,
+                ThreadManager: 0,
+                ThreadMemberManager: 0,
+                ReactionManager: 0,
+                ReactionUserManager: 0,
+                GuildStickerManager: 0,
+                GuildEmojiManager: 0,
+                GuildInviteManager: 0,
+                GuildScheduledEventManager: 0,
+                PresenceManager: 0,
+                StageInstanceManager: 0,
+                VoiceStateManager: 0,
+            }),
+        });
         clients.push(client);
 
         const sendQueue = new RateLimitedQueue(1500);
@@ -180,7 +197,7 @@ process.on('exit', () => {
 
                     sendQueue.enqueue(async () => {
                         if (isPaused) return; // Double-check before sending
-                        const channel = await client.channels.fetch(randomChannelId).catch(() => null);
+                        const channel = client.channels.cache.get(randomChannelId);
                         if (!channel) {
                             Logger.error(`[${index + 1}] Channel not found: ${randomChannelId}`);
                             return;
@@ -241,7 +258,7 @@ process.on('exit', () => {
 
                         sendQueue.enqueue(async () => {
                             if (isPaused) return;
-                            const targetChannel = await client.channels.fetch(targetChannelId).catch(() => null);
+                            const targetChannel = client.channels.cache.get(targetChannelId);
                             if (!targetChannel) {
                                 Logger.error(`[${index + 1}] Special message channel not found: ${targetChannelId}`);
                                 return;
@@ -267,17 +284,51 @@ process.on('exit', () => {
         };
 
         timers.cacheSweepInterval = setInterval(() => {
-            const before = client.channels.cache.size;
             const channelSet = new Set(channels);
+
+            // Sweep channels cache — keep only configured channels
             client.channels.cache.sweep(ch => !channelSet.has(ch.id));
-            const after = client.channels.cache.size;
-            if (before > after) {
-                Logger.debug(`[${index + 1}] Swept ${before - after} cached channels (${before} → ${after})`);
+
+            // Sweep message caches from all cached channels
+            client.channels.cache.forEach(ch => {
+                if (ch.messages && ch.messages.cache) {
+                    ch.messages.cache.clear();
+                }
+            });
+
+            // Sweep users cache — keep only the bot itself
+            if (client.users && client.users.cache) {
+                client.users.cache.sweep(u => u.id !== client.user?.id);
             }
+
+            // Sweep guild members cache
+            client.guilds.cache.forEach(guild => {
+                if (guild.members && guild.members.cache) {
+                    guild.members.cache.sweep(m => m.id !== client.user?.id);
+                }
+                // Sweep presences
+                if (guild.presences && guild.presences.cache) {
+                    guild.presences.cache.clear();
+                }
+            });
+
+            // Log memory usage periodically
+            const memMB = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1);
+            Logger.debug(`[${index + 1}] Cache sweep done. Heap: ${memMB}MB`);
         }, CACHE_SWEEP_INTERVAL);
 
-        client.on('ready', () => {
+        client.on('ready', async () => {
             Logger.success(`[${index + 1}] Logged in as ${client.user.username}`);
+
+            // Pre-fetch configured channels into cache so cache.get() works
+            for (const chId of channels) {
+                try {
+                    await client.channels.fetch(chId);
+                } catch (err) {
+                    Logger.error(`[${index + 1}] Failed to pre-fetch channel ${chId}: ${err.message}`);
+                }
+            }
+
             startTimers();
         });
 
