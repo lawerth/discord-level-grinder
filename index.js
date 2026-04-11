@@ -196,7 +196,7 @@ process.on('exit', () => {
                     const randomChannelId = channels[Math.floor(Math.random() * channels.length)];
 
                     sendQueue.enqueue(async () => {
-                        if (isPaused) return; // Double-check before sending
+                        if (isPaused) return;
                         const channel = client.channels.cache.get(randomChannelId);
                         if (!channel) {
                             Logger.error(`[${index + 1}] Channel not found: ${randomChannelId}`);
@@ -244,9 +244,7 @@ process.on('exit', () => {
                         const sent = specialSentCount.get(id) || 0;
                         if (sent >= repeat) {
                             clearInterval(intervalHandle);
-                            // Clean up completed entries from the Map
                             specialSentCount.delete(id);
-                            // Remove from tracked intervals
                             const idx = timers.specialMessageIntervals.indexOf(intervalHandle);
                             if (idx !== -1) timers.specialMessageIntervals.splice(idx, 1);
                             return;
@@ -286,41 +284,31 @@ process.on('exit', () => {
         timers.cacheSweepInterval = setInterval(() => {
             const channelSet = new Set(channels);
 
-            // Sweep channels cache — keep only configured channels
             client.channels.cache.sweep(ch => !channelSet.has(ch.id));
 
-            // Sweep message caches from all cached channels
             client.channels.cache.forEach(ch => {
                 if (ch.messages && ch.messages.cache) {
                     ch.messages.cache.clear();
                 }
             });
 
-            // Sweep users cache — keep only the bot itself
             if (client.users && client.users.cache) {
                 client.users.cache.sweep(u => u.id !== client.user?.id);
             }
 
-            // Sweep guild members cache
             client.guilds.cache.forEach(guild => {
                 if (guild.members && guild.members.cache) {
                     guild.members.cache.sweep(m => m.id !== client.user?.id);
                 }
-                // Sweep presences
                 if (guild.presences && guild.presences.cache) {
                     guild.presences.cache.clear();
                 }
             });
-
-            // Log memory usage periodically
-            const memMB = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1);
-            Logger.debug(`[${index + 1}] Cache sweep done. Heap: ${memMB}MB`);
         }, CACHE_SWEEP_INTERVAL);
 
         client.on('ready', async () => {
             Logger.success(`[${index + 1}] Logged in as ${client.user.username}`);
 
-            // Pre-fetch configured channels into cache so cache.get() works
             for (const chId of channels) {
                 try {
                     await client.channels.fetch(chId);
