@@ -1,6 +1,8 @@
 module.exports = {
     name: 'stats',
-    async execute({ message, messageCount, lastChannelID, lastMessageTime, specialMessages }) {
+    async execute({ message, messageCount, lastChannelID, lastMessageTime, specialSentCount, state }) {
+        const snap = state ? state.snapshot() : null;
+
         const time = lastMessageTime
             ? `<t:${Math.floor(lastMessageTime / 1000)}:R>`
             : 'No messages sent yet.';
@@ -9,19 +11,24 @@ module.exports = {
             ? `<#${lastChannelID}>`
             : 'N/A';
 
-        let specialStats = 'No special messages configured.';
-        if (Array.isArray(specialMessages) && specialMessages.length > 0) {
-            const total = specialMessages.length;
-            const completed = specialMessages.filter(m => m.sentCount >= m.count).length;
-            specialStats = `${completed}/${total} sent completely.`;
-        }
-
-        await message.reply(
+        let statsMsg =
             `📊 **Statistics**\n` +
             `Total messages: ${messageCount}\n` +
             `Last channel: ${channelDisplay}\n` +
-            `Last message: ${time}\n` +
-            `Special messages: ${specialStats}`
-        );
+            `Last message: ${time}`;
+
+        if (snap) {
+            statsMsg += `\n\n📈 **Global Stats**\n` +
+                `Active accounts: ${snap.activeAccounts}/${snap.totalAccounts}\n` +
+                `Invalid tokens: ${snap.invalidTokens}\n` +
+                `Global messages: ${snap.messagesSent.toLocaleString()}\n` +
+                `Commands used: ${snap.commandsUsed}\n` +
+                `Rate limits: ${snap.rateLimits}\n` +
+                `Active channels: ${snap.activeChannels}\n` +
+                `Uptime: ${snap.uptime}\n` +
+                `Memory: ${snap.memoryMB} MB`;
+        }
+
+        await message.reply(statsMsg);
     }
 };

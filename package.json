@@ -9,7 +9,6 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "chalk": "^4.1.2",
     "discord.js-selfbot-v13": "^3.6.1"
   }
 }

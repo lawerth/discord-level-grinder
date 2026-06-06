@@ -2,35 +2,39 @@ const { Client, Options } = require('discord.js-selfbot-v13');
 const fs = require('fs');
 const path = require('path');
 const config = require('./config.json');
-const sentences = require('./sentences.json');
-const Logger = require('./logger');
-
-console.clear();
+const sentences = require('./data/sentences.json');
+const terminal = require('./core/terminal');
+const Logger = require('./core/logger');
+const state = require('./core/state');
+const dashboard = require('./core/dashboard');
 
 if (!Array.isArray(config.tokens) || config.tokens.length === 0) {
-    Logger.error('No tokens found in config.json. Please add at least one token.');
+    console.error('[ERROR] No tokens found in config.json. Please add at least one token.');
     process.exit(1);
 }
 
 if (!Array.isArray(config.channels) || config.channels.length === 0) {
-    Logger.error('No channel IDs found in config.json. Please add at least one channel ID.');
+    console.error('[ERROR] No channel IDs found in config.json. Please add at least one channel ID.');
     process.exit(1);
 }
 
 if (typeof config.interval !== 'number' || config.interval <= 0) {
-    Logger.error('"interval" must be a valid number in config.json (in seconds).');
+    console.error('[ERROR] "interval" must be a valid number in config.json (in seconds).');
     process.exit(1);
 }
 
 if (typeof config.adminID !== 'string' || config.adminID.length === 0) {
-    Logger.error('"adminID" must be a valid string in config.json.');
+    console.error('[ERROR] "adminID" must be a valid string in config.json.');
     process.exit(1);
 }
 
 if (typeof config.prefix !== 'string' || config.prefix.length === 0) {
-    Logger.error('"prefix" must be a valid string in config.json.');
+    console.error('[ERROR] "prefix" must be a valid string in config.json.');
     process.exit(1);
 }
+
+terminal.init();
+dashboard.init();
 
 const INTERVAL = config.interval * 1000;
 const { tokens, channels, adminID, prefix, specialMessages = [] } = config;
@@ -40,6 +44,12 @@ const totalCount = tokens.length;
 const clients = [];
 const allTimerCleanups = [];
 const CACHE_SWEEP_INTERVAL = 5 * 60 * 1000;
+
+state.set('totalAccounts', totalCount);
+
+for (const chId of channels) {
+    state.addChannel(chId);
+}
 
 class RateLimitedQueue {
     constructor(delay = 1500, maxSize = 1000) {
@@ -75,7 +85,6 @@ class RateLimitedQueue {
             }
             await new Promise(r => setTimeout(r, this.delay));
         }
-
         this.running = false;
     }
 }
@@ -106,6 +115,10 @@ function gracefulShutdown(signal) {
 
     clients.length = 0;
 
+    dashboard.destroy();
+    Logger.close();
+    terminal.cleanup();
+
     process.exit(0);
 }
 
@@ -118,6 +131,8 @@ process.on('exit', () => {
 });
 
 (async () => {
+    Logger.info(`Starting login for ${totalCount} accounts...`);
+
     for (let index = 0; index < tokens.length; index++) {
         const token = tokens[index];
         const client = new Client({
@@ -199,7 +214,7 @@ process.on('exit', () => {
                         if (isPaused) return;
                         const channel = client.channels.cache.get(randomChannelId);
                         if (!channel) {
-                            Logger.error(`[${index + 1}] Channel not found: ${randomChannelId}`);
+                            Logger.error(`Channel not found: ${randomChannelId}`, index + 1);
                             return;
                         }
 
@@ -208,7 +223,15 @@ process.on('exit', () => {
                             messageCount++;
                             lastChannelID = randomChannelId;
                             lastMessageTime = Date.now();
-                        } catch { }
+
+                            state.increment('messagesSent');
+                        } catch (err) {
+                            if (err.httpStatus === 429 || (err.message && err.message.includes('rate limit'))) {
+                                state.increment('rateLimits');
+                                const retryAfter = err.retryAfter || 'unknown';
+                                Logger.warning(`Rate limited for ${retryAfter}s`, index + 1);
+                            }
+                        }
                     });
                 };
 
@@ -229,7 +252,7 @@ process.on('exit', () => {
                     typeof repeat !== 'number' || repeat <= 0 ||
                     typeof interval !== 'number' || interval <= 0
                 ) {
-                    Logger.error(`[${index + 1}] Invalid special message config at index ${i}. Skipping.`);
+                    Logger.error(`Invalid special message config at index ${i}. Skipping.`, index + 1);
                     return;
                 }
 
@@ -258,7 +281,7 @@ process.on('exit', () => {
                             if (isPaused) return;
                             const targetChannel = client.channels.cache.get(targetChannelId);
                             if (!targetChannel) {
-                                Logger.error(`[${index + 1}] Special message channel not found: ${targetChannelId}`);
+                                Logger.error(`Special message channel not found: ${targetChannelId}`, index + 1);
                                 return;
                             }
                             try {
@@ -267,8 +290,15 @@ process.on('exit', () => {
                                 messageCount++;
                                 lastChannelID = targetChannel.id;
                                 lastMessageTime = Date.now();
+
+                                state.increment('messagesSent');
                             } catch (err) {
-                                Logger.error(`[${index + 1}] Special message send error: ${err.message}`);
+                                if (err.httpStatus === 429 || (err.message && err.message.includes('rate limit'))) {
+                                    state.increment('rateLimits');
+                                    Logger.warning(`Rate limited (special msg)`, index + 1);
+                                } else {
+                                    Logger.error(`Special message send error: ${err.message}`, index + 1);
+                                }
                             }
                         });
 
@@ -307,13 +337,15 @@ process.on('exit', () => {
         }, CACHE_SWEEP_INTERVAL);
 
         client.on('ready', async () => {
-            Logger.success(`[${index + 1}] Logged in as ${client.user.username}`);
+            Logger.success(`Logged in as ${client.user.username}`, index + 1);
+
+            state.increment('activeAccounts');
 
             for (const chId of channels) {
                 try {
                     await client.channels.fetch(chId);
                 } catch (err) {
-                    Logger.error(`[${index + 1}] Failed to pre-fetch channel ${chId}: ${err.message}`);
+                    Logger.error(`Failed to pre-fetch channel ${chId}: ${err.message}`, index + 1);
                 }
             }
 
@@ -329,19 +361,26 @@ process.on('exit', () => {
 
             const command = commands.get(cmd);
             if (command) {
+                state.increment('commandsUsed');
+                Logger.command(`!${cmd} used by ${message.author.username}`, index + 1);
+
                 try {
                     await command.execute({
                         message,
                         client,
                         isPaused,
-                        setPaused: v => isPaused = v,
+                        setPaused: v => {
+                            isPaused = v;
+                            state.set('isPaused', v);
+                        },
                         clearAllTimers,
                         startTimers,
                         messageCount,
                         lastChannelID,
                         lastMessageTime,
                         specialSentCount,
-                        sendQueue
+                        sendQueue,
+                        state,
                     });
                 } catch (err) {
                     Logger.error(`Command error: ${cmd} - ${err.message}`);
@@ -356,11 +395,12 @@ process.on('exit', () => {
             await client.login(token.trim());
             successCount++;
         } catch (err) {
-            Logger.error(`[${index + 1}] Token login failed: ${err.message}`);
+            Logger.error(`Token login failed: ${err.message}`, index + 1);
+
+            state.increment('invalidTokens');
         }
     }
 
-    console.log('──────────────────────────────────────');
     Logger.success(`${successCount}/${totalCount} accounts successfully logged in.`);
     if (successCount < totalCount) {
         Logger.error(`${totalCount - successCount} tokens invalid.`);
