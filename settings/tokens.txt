@@ -1,0 +1,6 @@
+# Discord Level Grinder Tokens Configuration
+# Format: TOKEN #account_name
+
+TOKEN_1_PASTE_HERE
+TOKEN_2_PASTE_HERE
+TOKEN_3_PASTE_HERE

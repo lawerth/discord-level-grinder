@@ -1,35 +1,51 @@
 const { Client, Options } = require('discord.js-selfbot-v13');
 const fs = require('fs');
 const path = require('path');
-const config = require('./config.json');
+const config = require('./settings/config.json');
 const sentences = require('./data/sentences.json');
 const terminal = require('./core/terminal');
 const Logger = require('./core/logger');
 const state = require('./core/state');
 const dashboard = require('./core/dashboard');
 
-if (!Array.isArray(config.tokens) || config.tokens.length === 0) {
-    console.error('[ERROR] No tokens found in config.json. Please add at least one token.');
+const tokensPath = path.join(__dirname, 'settings', 'tokens.txt');
+if (!fs.existsSync(tokensPath)) {
+    console.error('[ERROR] tokens.txt file not found. Please create settings/tokens.txt and add your tokens.');
+    process.exit(1);
+}
+
+const tokensContent = fs.readFileSync(tokensPath, 'utf8');
+const tokens = tokensContent
+    .split(/\r?\n/)
+    .map(line => {
+        const hashIdx = line.indexOf('#');
+        const clean = hashIdx !== -1 ? line.substring(0, hashIdx) : line;
+        return clean.trim();
+    })
+    .filter(t => t.length > 0);
+
+if (tokens.length === 0) {
+    console.error('[ERROR] No tokens found in settings/tokens.txt. Please add at least one token.');
     process.exit(1);
 }
 
 if (!Array.isArray(config.channels) || config.channels.length === 0) {
-    console.error('[ERROR] No channel IDs found in config.json. Please add at least one channel ID.');
+    console.error('[ERROR] No channel IDs found in settings/config.json. Please add at least one channel ID.');
     process.exit(1);
 }
 
 if (typeof config.interval !== 'number' || config.interval <= 0) {
-    console.error('[ERROR] "interval" must be a valid number in config.json (in seconds).');
+    console.error('[ERROR] "interval" must be a valid number in settings/config.json (in seconds).');
     process.exit(1);
 }
 
 if (typeof config.adminID !== 'string' || config.adminID.length === 0) {
-    console.error('[ERROR] "adminID" must be a valid string in config.json.');
+    console.error('[ERROR] "adminID" must be a valid string in settings/config.json.');
     process.exit(1);
 }
 
 if (typeof config.prefix !== 'string' || config.prefix.length === 0) {
-    console.error('[ERROR] "prefix" must be a valid string in config.json.');
+    console.error('[ERROR] "prefix" must be a valid string in settings/config.json.');
     process.exit(1);
 }
 
@@ -37,7 +53,7 @@ terminal.init();
 dashboard.init();
 
 const INTERVAL = config.interval * 1000;
-const { tokens, channels, adminID, prefix, specialMessages = [] } = config;
+const { channels, adminID, prefix, specialMessages = [] } = config;
 
 let successCount = 0;
 const totalCount = tokens.length;
@@ -401,8 +417,5 @@ process.on('exit', () => {
         }
     }
 
-    Logger.success(`${successCount}/${totalCount} accounts successfully logged in.`);
-    if (successCount < totalCount) {
-        Logger.error(`${totalCount - successCount} tokens invalid.`);
-    }
+    Logger.info(`${successCount}/${totalCount} accounts successfully logged in.`);
 })();

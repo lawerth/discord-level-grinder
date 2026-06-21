@@ -36,12 +36,23 @@ npm start
 
 ## ⚙️ Configuration
 
-Edit `config.json`:
+1. Create a `tokens.txt` file in the `settings/` directory and add your user tokens (one per line). You can optionally add account names/comments after a `#` character:
+
+```text
+token1
+token2
+token3
+```
+
+2. Edit `settings/config.json`:
 
 ```json
 {
-  "tokens": ["your_token_here"],
-  "channels": ["channel_id_1", "channel_id_2"],
+  "channels": [
+    "channel_id_1",
+    "channel_id_2",
+    "channel_id_3"
+  ],
   "interval": 60,
   "adminID": "your_discord_id",
   "prefix": "!",
@@ -62,7 +73,6 @@ Edit `config.json`:
 
 | Key                                | Type   | Required                    | Description                                              |
 | ---------------------------------- | ------ | --------------------------- | -------------------------------------------------------- |
-| `tokens`                           | array  | ✅                           | List of user tokens to run the selfbots                  |
 | `channels`                         | array  | ✅                           | List of channel IDs for random message sending           |
 | `interval`                         | number | ✅                           | Interval in seconds between random messages              |
 | `adminID`                          | string | ✅                           | Discord user ID allowed to run commands                  |
