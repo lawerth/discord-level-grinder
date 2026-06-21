@@ -17,16 +17,16 @@ const COLORS = {
     warning: ANSI.rgb(255, 200, 60),
     info: ANSI.rgb(100, 180, 255),
     command: ANSI.rgb(200, 130, 255),
-    debug: ANSI.rgb(150, 150, 150),
+    debug: ANSI.rgb(170, 170, 180),
     border: ANSI.rgb(100, 100, 120),
     label: ANSI.rgb(180, 180, 200),
     value: ANSI.rgb(255, 255, 255),
     title: ANSI.rgb(130, 200, 255),
     accent: ANSI.rgb(80, 250, 123),
-    dimmed: ANSI.rgb(90, 90, 110),
+    dimmed: ANSI.rgb(140, 140, 165),
     live: ANSI.rgb(80, 250, 123),
     paused: ANSI.rgb(255, 200, 60),
-    timestamp: ANSI.rgb(110, 110, 140),
+    timestamp: ANSI.rgb(160, 165, 190),
     white: ANSI.rgb(220, 220, 230),
     reset: ANSI.reset,
 };
@@ -45,8 +45,6 @@ class Terminal extends EventEmitter {
         this._screen = null;
         this._grid = null;
         this._logPanel = null;
-        this._cpuGauge = null;
-        this._ramGauge = null;
         this._statsPanel = null;
         this._initialized = false;
         this._logs = [];
@@ -97,7 +95,7 @@ class Terminal extends EventEmitter {
             screen: this._screen,
         });
 
-        this._logPanel = this._grid.set(0, 0, 8, 8, contrib.log, {
+        this._logPanel = this._grid.set(0, 0, 8, 12, contrib.log, {
             label: ' Live Logs ',
             tags: true,
             bufferLength: this._maxLogs,
@@ -175,38 +173,6 @@ class Terminal extends EventEmitter {
 
         this._logPanel.focus();
 
-        this._cpuGauge = this._grid.set(0, 8, 4, 4, blessed.box, {
-            label: ' CPU Usage ',
-            tags: true,
-            padding: {
-                left: 1,
-                right: 1,
-            },
-            border: { type: 'line', fg: THEME.border },
-            style: {
-                bg: THEME.background,
-                fg: THEME.foreground,
-                border: { fg: THEME.border },
-                label: { fg: THEME.foreground, bold: true },
-            },
-        });
-
-        this._ramGauge = this._grid.set(4, 8, 4, 4, blessed.box, {
-            label: ' RAM Usage ',
-            tags: true,
-            padding: {
-                left: 1,
-                right: 1,
-            },
-            border: { type: 'line', fg: THEME.border },
-            style: {
-                bg: THEME.background,
-                fg: THEME.foreground,
-                border: { fg: THEME.border },
-                label: { fg: THEME.foreground, bold: true },
-            },
-        });
-
         this._statsPanel = this._grid.set(8, 0, 4, 12, blessed.box, {
             label: ' Statistics ',
             tags: true,
@@ -227,9 +193,9 @@ class Terminal extends EventEmitter {
     _renderSeedLogs() {
         const now = Date.now();
         const seedLines = [
-            `{gray-fg}${this._formatTime(now - 2000)}{/} {cyan-fg}[INFO]{/} Dashboard initialized`,
-            `{gray-fg}${this._formatTime(now - 1000)}{/} {green-fg}[SUCCESS]{/} Runtime monitors online`,
-            `{gray-fg}${this._formatTime(now)}{/} {cyan-fg}[INFO]{/} Waiting for account activity`,
+            `{#a0a5be-fg}${this._formatTime(now - 2000)}{/} {cyan-fg}[INFO]{/} Dashboard initialized`,
+            `{#a0a5be-fg}${this._formatTime(now - 1000)}{/} {green-fg}[SUCCESS]{/} Runtime monitors online`,
+            `{#a0a5be-fg}${this._formatTime(now)}{/} {cyan-fg}[INFO]{/} Waiting for account activity`,
         ];
 
         for (const line of seedLines) {
@@ -274,9 +240,7 @@ class Terminal extends EventEmitter {
         if (!this._initialized || !data) return;
 
         this._lastDashboard = data;
-        this._setGaugeContent(this._cpuGauge, 'CPU', data.cpuPercent, 'green');
-        this._setGaugeContent(this._ramGauge, 'RAM', data.ramPercent, 'cyan', data.ramDetail);
-        this._statsPanel.setContent(this._formatStats(data.statistics));
+        this._statsPanel.setContent(this._formatStats(data.statistics, data.cpuPercent, data.ramDetail));
         this._requestRender();
     }
 
@@ -312,51 +276,42 @@ class Terminal extends EventEmitter {
         };
     }
 
-    _formatStats(stats = {}) {
-        const rows = [
-            ['Active Accounts', stats.activeAccounts || '99/99'],
-            ['Messages Sent', stats.messagesSent || '100'],
-            ['Working Time', stats.workingTime || '5 days 6 hours'],
+    _formatStats(stats = {}, cpuPercent, ramDetail) {
+        const items = [
+            ['Active Accounts', `{cyan-fg}{bold}${stats.activeAccounts || '0/0'}{/}`],
+            ['Messages Sent', `{cyan-fg}{bold}${stats.messagesSent || '0'}{/}`],
+            ['Working Time', `{cyan-fg}{bold}${stats.workingTime || '0 seconds'}{/}`],
+            ['CPU', this._formatGaugeInline(cpuPercent, 'green')],
+            ['RAM', ramDetail ? `{cyan-fg}{bold}${ramDetail}{/}` : '{cyan-fg}{bold}0 MB{/}'],
         ];
 
         const panelHeight = typeof this._statsPanel?.height === 'number'
             ? this._statsPanel.height
             : 4;
         const contentRows = Math.max(1, panelHeight - 2);
-        if (contentRows < rows.length) {
-            return rows
-                .map(([label, value]) => `{gray-fg}${label}:{/} {cyan-fg}{bold}${value}{/}`)
+        if (contentRows < items.length) {
+            return items
+                .map(([label, value]) => `{#a0a5be-fg}${label}:{/} ${value}`)
                 .join('  ');
         }
 
-        return rows
-            .map(([label, value]) => `{gray-fg}${`${label}:`.padEnd(17)}{/} {cyan-fg}{bold}${value}{/}`)
+        return items
+            .map(([label, value]) => `{#a0a5be-fg}${`${label}:`.padEnd(17)}{/} ${value}`)
             .join('\n');
     }
 
-    _setGaugeContent(gauge, label, value, color, detail = '') {
-        if (!gauge) return;
-
+    _formatGaugeInline(value, color) {
         const numericValue = Number(value);
         if (!Number.isFinite(numericValue)) {
-            gauge.setContent(`{${color}-fg}${label} ${detail}{/}`);
-            return;
+            return `{${color}-fg}{bold}N/A{/}`;
         }
 
         const percent = Math.max(0, Math.min(100, Math.round(numericValue)));
-        const gaugeWidth = typeof gauge.width === 'number'
-            ? gauge.width
-            : Math.floor((this._screen?.width || 90) / 3);
-        const contentWidth = Math.max(12, gaugeWidth - 10);
-        const detailText = detail ? ` ${detail}` : '';
-        const prefix = `${label} ${String(percent).padStart(3)}%${detailText}`;
-        const barWidth = Math.min(30, Math.max(6, contentWidth - prefix.length - 3));
+        const barWidth = 20;
         const filledWidth = Math.round((barWidth * percent) / 100);
         const emptyWidth = barWidth - filledWidth;
         const bar = `${'#'.repeat(filledWidth)}${'-'.repeat(emptyWidth)}`;
-        const line = `{${color}-fg}${prefix}{/} [${bar}]`;
-
-        gauge.setContent(line);
+        return `{${color}-fg}{bold}${String(percent).padStart(3)}%{/} [${bar}]`;
     }
 
     _updateAutoScroll() {
@@ -429,8 +384,6 @@ class Terminal extends EventEmitter {
 
         this._grid = null;
         this._logPanel = null;
-        this._cpuGauge = null;
-        this._ramGauge = null;
         this._statsPanel = null;
         this._renderScheduled = false;
     }
