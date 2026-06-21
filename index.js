@@ -154,7 +154,7 @@ process.on('exit', () => {
         const client = new Client({
             sweepInterval: 300,
             makeCache: Options.cacheWithLimits({
-                MessageManager: 50,
+                MessageManager: 0,
                 GuildMemberManager: 0,
                 ThreadManager: 0,
                 ThreadMemberManager: 0,
@@ -167,6 +167,10 @@ process.on('exit', () => {
                 PresenceManager: 0,
                 StageInstanceManager: 0,
                 VoiceStateManager: 0,
+                UserManager: {
+                    maxSize: 1,
+                    keepOverLimit: (user) => user.id === client.user?.id,
+                },
             }),
         });
         clients.push(client);
@@ -181,11 +185,86 @@ process.on('exit', () => {
             cacheSweepInterval: null
         };
 
+        const performCacheSweep = () => {
+            const channelSet = new Set(channels);
+            specialMessages.forEach(msg => {
+                if (msg.channelId) {
+                    channelSet.add(msg.channelId);
+                }
+            });
+
+            const targetGuildIds = new Set();
+            channelSet.forEach(chId => {
+                const ch = client.channels.cache.get(chId);
+                if (ch && ch.guildId) {
+                    targetGuildIds.add(ch.guildId);
+                }
+            });
+
+            // Sweep client channels
+            client.channels.cache.sweep(ch => !channelSet.has(ch.id));
+
+            // Sweep client guilds
+            client.guilds.cache.sweep(g => !targetGuildIds.has(g.id));
+
+            // Sweep sub-caches of remaining guilds
+            client.guilds.cache.forEach(guild => {
+                if (guild.channels && guild.channels.cache) {
+                    guild.channels.cache.sweep(ch => !channelSet.has(ch.id));
+                }
+                if (guild.members && guild.members.cache) {
+                    guild.members.cache.sweep(m => m.id !== client.user?.id);
+                }
+                if (guild.presences && guild.presences.cache) {
+                    guild.presences.cache.clear();
+                }
+                if (guild.roles && guild.roles.cache) {
+                    guild.roles.cache.clear();
+                }
+                if (guild.emojis && guild.emojis.cache) {
+                    guild.emojis.cache.clear();
+                }
+                if (guild.stickers && guild.stickers.cache) {
+                    guild.stickers.cache.clear();
+                }
+            });
+
+            if (client.users && client.users.cache) {
+                client.users.cache.sweep(u => u.id !== client.user?.id);
+            }
+        };
+
         let isPaused = false;
         let messageCount = 0;
         let lastChannelID = null;
         let lastMessageTime = null;
         let specialSentCount = new Map();
+
+        let wasActive = false;
+        let isInvalidated = false;
+
+        const handleTokenInvalidation = (reason, isInitial = false) => {
+            if (isInvalidated) return;
+            isInvalidated = true;
+
+            if (isInitial) {
+                Logger.error(`Token login failed: ${reason}`, index + 1);
+            } else {
+                Logger.error(`Token became invalid during runtime: ${reason}`, index + 1);
+            }
+
+            clearAllTimers();
+
+            if (wasActive) {
+                wasActive = false;
+                state.decrement('activeAccounts');
+            }
+            state.increment('invalidTokens');
+
+            try {
+                client.destroy();
+            } catch {}
+        };
 
         const clearAllTimers = () => {
             if (timers.randomMessageTimeout) {
@@ -246,6 +325,10 @@ process.on('exit', () => {
                                 state.increment('rateLimits');
                                 const retryAfter = err.retryAfter || 'unknown';
                                 Logger.warning(`Rate limited for ${retryAfter}s`, index + 1);
+                            } else if (err.httpStatus === 401 || (err.message && (err.message.includes('401') || err.message.toLowerCase().includes('unauthorized') || err.message.toLowerCase().includes('token')))) {
+                                handleTokenInvalidation(err.message);
+                            } else {
+                                Logger.error(`Message send error: ${err.message}`, index + 1);
                             }
                         }
                     });
@@ -312,6 +395,8 @@ process.on('exit', () => {
                                 if (err.httpStatus === 429 || (err.message && err.message.includes('rate limit'))) {
                                     state.increment('rateLimits');
                                     Logger.warning(`Rate limited (special msg)`, index + 1);
+                                } else if (err.httpStatus === 401 || (err.message && (err.message.includes('401') || err.message.toLowerCase().includes('unauthorized') || err.message.toLowerCase().includes('token')))) {
+                                    handleTokenInvalidation(err.message);
                                 } else {
                                     Logger.error(`Special message send error: ${err.message}`, index + 1);
                                 }
@@ -328,36 +413,29 @@ process.on('exit', () => {
         };
 
         timers.cacheSweepInterval = setInterval(() => {
-            const channelSet = new Set(channels);
-
-            client.channels.cache.sweep(ch => !channelSet.has(ch.id));
-
-            client.channels.cache.forEach(ch => {
-                if (ch.messages && ch.messages.cache) {
-                    ch.messages.cache.clear();
-                }
-            });
-
-            if (client.users && client.users.cache) {
-                client.users.cache.sweep(u => u.id !== client.user?.id);
-            }
-
-            client.guilds.cache.forEach(guild => {
-                if (guild.members && guild.members.cache) {
-                    guild.members.cache.sweep(m => m.id !== client.user?.id);
-                }
-                if (guild.presences && guild.presences.cache) {
-                    guild.presences.cache.clear();
-                }
-            });
+            performCacheSweep();
         }, CACHE_SWEEP_INTERVAL);
 
+        client.on('shardDisconnect', (event) => {
+            if (event && event.code === 4004) {
+                handleTokenInvalidation('Gateway close code 4004 (Authentication failed)');
+            }
+        });
+
         client.on('ready', async () => {
+            wasActive = true;
             Logger.success(`Logged in as ${client.user.username}`, index + 1);
 
             state.increment('activeAccounts');
 
-            for (const chId of channels) {
+            const allTargetChannels = new Set(channels);
+            specialMessages.forEach(msg => {
+                if (msg.channelId) {
+                    allTargetChannels.add(msg.channelId);
+                }
+            });
+
+            for (const chId of allTargetChannels) {
                 try {
                     await client.channels.fetch(chId);
                 } catch (err) {
@@ -365,6 +443,7 @@ process.on('exit', () => {
                 }
             }
 
+            performCacheSweep();
             startTimers();
         });
 
@@ -411,9 +490,7 @@ process.on('exit', () => {
             await client.login(token.trim());
             successCount++;
         } catch (err) {
-            Logger.error(`Token login failed: ${err.message}`, index + 1);
-
-            state.increment('invalidTokens');
+            handleTokenInvalidation(err.message, true);
         }
     }
 
