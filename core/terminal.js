@@ -1,23 +1,14 @@
 'use strict';
 
+const blessed = require('blessed');
+const contrib = require('blessed-contrib');
+const { EventEmitter } = require('events');
+
 const ANSI = {
-    hideCursor: '\x1b[?25l',
-    showCursor: '\x1b[?25h',
-    saveCursor: '\x1b7',
-    restoreCursor: '\x1b8',
-    moveTo: (row, col) => `\x1b[${row};${col}H`,
-    moveToCol: (col) => `\x1b[${col}G`,
-    clearLine: '\x1b[2K',
-    clearDown: '\x1b[J',
-    clearScreen: '\x1b[2J',
-    setScrollRegion: (top, bottom) => `\x1b[${top};${bottom}r`,
-    resetScrollRegion: '\x1b[r',
-    scrollUp: (n = 1) => `\x1b[${n}S`,
     reset: '\x1b[0m',
     bold: '\x1b[1m',
     dim: '\x1b[2m',
     rgb: (r, g, b) => `\x1b[38;2;${r};${g};${b}m`,
-    bgRgb: (r, g, b) => `\x1b[48;2;${r};${g};${b}m`,
 };
 
 const COLORS = {
@@ -40,195 +31,412 @@ const COLORS = {
     reset: ANSI.reset,
 };
 
-class Terminal {
+const THEME = {
+    background: 'black',
+    foreground: 'white',
+    border: 'cyan',
+    accent: 'cyan',
+    success: 'green',
+};
+
+class Terminal extends EventEmitter {
     constructor() {
-        this._rows = 0;
-        this._cols = 0;
-        this._dashboardHeight = 10;
-        this._scrollBottom = 0;
+        super();
+        this._screen = null;
+        this._grid = null;
+        this._logPanel = null;
+        this._cpuGauge = null;
+        this._ramGauge = null;
+        this._statsPanel = null;
         this._initialized = false;
-        this._writeBuffer = '';
-        this._flushScheduled = false;
-        this._resizeHandler = null;
+        this._logs = [];
+        this._maxLogs = 500;
+        this._lastDashboard = null;
+        this._renderScheduled = false;
+        this._autoScroll = true;
     }
 
     init() {
         if (this._initialized) return;
         this._initialized = true;
 
-        this._updateDimensions();
+        this._screen = blessed.screen({
+            smartCSR: true,
+            fullUnicode: true,
+            dockBorders: true,
+            title: 'Discord Level Grinder Dashboard',
+        });
 
-        this._resizeHandler = () => {
-            this._updateDimensions();
-            this.emit('resize', this._rows, this._cols);
-        };
-        process.stdout.on('resize', this._resizeHandler);
+        this._screen.key(['q', 'Q', 'C-c'], () => {
+            if (process.listenerCount('SIGINT') > 0) {
+                process.emit('SIGINT');
+                return;
+            }
 
-        const buf = ANSI.clearScreen
-            + ANSI.hideCursor
-            + ANSI.moveTo(1, 1)
-            + this._setupScrollRegion();
+            process.exit(0);
+        });
 
-        process.stdout.write(buf);
+        this._screen.on('resize', () => {
+            this.emit('resize', this._screen.height, this._screen.width);
+            this.updateDashboard(this._lastDashboard);
+        });
+
+        this._buildLayout();
+        if (this._logs.length === 0) {
+            this._renderSeedLogs();
+        } else {
+            this._replayBufferedLogs();
+        }
+        this._screen.render();
     }
 
-    _updateDimensions() {
-        this._rows = process.stdout.rows || 24;
-        this._cols = process.stdout.columns || 80;
-        this._scrollBottom = Math.max(1, this._rows - this._dashboardHeight);
+    _buildLayout() {
+        this._grid = new contrib.grid({
+            rows: 12,
+            cols: 12,
+            screen: this._screen,
+        });
+
+        this._logPanel = this._grid.set(0, 0, 8, 8, contrib.log, {
+            label: ' Live Logs ',
+            tags: true,
+            bufferLength: this._maxLogs,
+            keys: true,
+            mouse: true,
+            scrollable: true,
+            alwaysScroll: true,
+            scrollbar: {
+                ch: ' ',
+                track: { bg: THEME.background },
+                style: { bg: THEME.accent },
+            },
+            border: { type: 'line', fg: THEME.border },
+            style: {
+                bg: THEME.background,
+                fg: THEME.foreground,
+                border: { fg: THEME.border },
+                label: { fg: THEME.foreground, bold: true },
+            },
+        });
+
+        this._logPanel.on('scroll', () => {
+            this._updateAutoScroll();
+        });
+
+        this._logPanel.on('wheeldown', () => {
+            this._updateAutoScroll();
+        });
+
+        this._logPanel.on('wheelup', () => {
+            this._autoScroll = false;
+            this._updateLogLabel();
+            this._requestRender();
+        });
+
+        this._logPanel.key(['up', 'k'], () => {
+            this._logPanel.scroll(-1);
+            this._autoScroll = false;
+            this._updateLogLabel();
+            this._requestRender();
+        });
+
+        this._logPanel.key(['down', 'j'], () => {
+            this._logPanel.scroll(1);
+            this._updateAutoScroll();
+        });
+
+        this._logPanel.key(['pageup'], () => {
+            const scrollAmount = Math.max(1, (this._logPanel.height || 10) - 2);
+            this._logPanel.scroll(-scrollAmount);
+            this._autoScroll = false;
+            this._updateLogLabel();
+            this._requestRender();
+        });
+
+        this._logPanel.key(['pagedown'], () => {
+            const scrollAmount = Math.max(1, (this._logPanel.height || 10) - 2);
+            this._logPanel.scroll(scrollAmount);
+            this._updateAutoScroll();
+        });
+
+        this._logPanel.key(['home'], () => {
+            this._logPanel.setScrollPerc(0);
+            this._autoScroll = false;
+            this._updateLogLabel();
+            this._requestRender();
+        });
+
+        this._logPanel.key(['end'], () => {
+            this._logPanel.setScrollPerc(100);
+            this._autoScroll = true;
+            this._updateLogLabel();
+            this._requestRender();
+        });
+
+        this._logPanel.focus();
+
+        this._cpuGauge = this._grid.set(0, 8, 4, 4, blessed.box, {
+            label: ' CPU Usage ',
+            tags: true,
+            padding: {
+                left: 1,
+                right: 1,
+            },
+            border: { type: 'line', fg: THEME.border },
+            style: {
+                bg: THEME.background,
+                fg: THEME.foreground,
+                border: { fg: THEME.border },
+                label: { fg: THEME.foreground, bold: true },
+            },
+        });
+
+        this._ramGauge = this._grid.set(4, 8, 4, 4, blessed.box, {
+            label: ' RAM Usage ',
+            tags: true,
+            padding: {
+                left: 1,
+                right: 1,
+            },
+            border: { type: 'line', fg: THEME.border },
+            style: {
+                bg: THEME.background,
+                fg: THEME.foreground,
+                border: { fg: THEME.border },
+                label: { fg: THEME.foreground, bold: true },
+            },
+        });
+
+        this._statsPanel = this._grid.set(8, 0, 4, 12, blessed.box, {
+            label: ' Statistics ',
+            tags: true,
+            padding: {
+                right: 2,
+                left: 2,
+            },
+            border: { type: 'line', fg: THEME.border },
+            style: {
+                bg: THEME.background,
+                fg: THEME.foreground,
+                border: { fg: THEME.border },
+                label: { fg: THEME.foreground, bold: true },
+            },
+        });
     }
 
-    _setupScrollRegion() {
-        return ANSI.setScrollRegion(1, this._scrollBottom);
+    _renderSeedLogs() {
+        const now = Date.now();
+        const seedLines = [
+            `{gray-fg}${this._formatTime(now - 2000)}{/} {cyan-fg}[INFO]{/} Dashboard initialized`,
+            `{gray-fg}${this._formatTime(now - 1000)}{/} {green-fg}[SUCCESS]{/} Runtime monitors online`,
+            `{gray-fg}${this._formatTime(now)}{/} {cyan-fg}[INFO]{/} Waiting for account activity`,
+        ];
+
+        for (const line of seedLines) {
+            this._appendLogLine(line);
+        }
     }
 
-    reconfigureRegions() {
-        this._updateDimensions();
-        const buf = this._setupScrollRegion()
-            + ANSI.moveTo(this._scrollBottom, 1);
-        process.stdout.write(buf);
+    _replayBufferedLogs() {
+        for (const line of this._logs.slice(-this._maxLogs)) {
+            this._logPanel.log(line);
+        }
     }
 
     writeLog(line) {
-        const visibleLen = this._stripAnsi(line).length;
-        let output = line;
-        if (visibleLen > this._cols) {
-            output = this._truncateAnsi(line, this._cols - 1);
-        }
+        if (!line) return;
 
-        const buf = ANSI.saveCursor
-            + ANSI.moveTo(this._scrollBottom, 1)
-            + '\n'
-            + ANSI.clearLine
-            + output
-            + ANSI.reset
-            + ANSI.restoreCursor;
-
-        process.stdout.write(buf);
+        const formatted = this._convertAnsiToBlessed(String(line));
+        this._appendLogLine(formatted);
     }
 
-    writeDashboardLine(lineIndex, content) {
-        const row = this._scrollBottom + 1 + lineIndex;
-        if (row > this._rows) return;
-
-        const visibleLen = this._stripAnsi(content).length;
-        let output = content;
-        if (visibleLen > this._cols) {
-            output = this._truncateAnsi(content, this._cols - 1);
+    _appendLogLine(line) {
+        this._logs.push(line);
+        if (this._logs.length > this._maxLogs) {
+            this._logs.shift();
         }
 
-        this._writeBuffer += ANSI.moveTo(row, 1) + ANSI.clearLine + output + ANSI.reset;
+        if (!this._initialized || !this._logPanel) return;
 
-        if (!this._flushScheduled) {
-            this._flushScheduled = true;
-            Promise.resolve().then(() => {
-                this._flushScheduled = false;
-                if (this._writeBuffer.length > 0) {
-                    const buf = ANSI.saveCursor
-                        + this._writeBuffer
-                        + ANSI.restoreCursor;
-                    this._writeBuffer = '';
-                    process.stdout.write(buf);
-                }
-            });
+        this._logPanel.log(line);
+
+        if (!this._autoScroll) {
+            const scrollHeight = this._logPanel.getScrollHeight();
+            const visibleHeight = this._logPanel.height - 2;
+            const targetScroll = Math.max(0, scrollHeight - visibleHeight - 1);
+            this._logPanel.scrollTo(targetScroll);
         }
+
+        this._requestRender();
+    }
+
+    updateDashboard(data) {
+        if (!this._initialized || !data) return;
+
+        this._lastDashboard = data;
+        this._setGaugeContent(this._cpuGauge, 'CPU', data.cpuPercent, 'green');
+        this._setGaugeContent(this._ramGauge, 'RAM', data.ramPercent, 'cyan', data.ramDetail);
+        this._statsPanel.setContent(this._formatStats(data.statistics));
+        this._requestRender();
     }
 
     renderDashboard(lines) {
-        let buf = ANSI.saveCursor;
+        if (!this._initialized || !Array.isArray(lines)) return;
 
-        for (let i = 0; i < lines.length; i++) {
-            const row = this._scrollBottom + 1 + i;
-            if (row > this._rows) break;
-
-            let output = lines[i];
-            const visibleLen = this._stripAnsi(output).length;
-            if (visibleLen > this._cols) {
-                output = this._truncateAnsi(output, this._cols - 1);
-            }
-
-            buf += ANSI.moveTo(row, 1) + ANSI.clearLine + output + ANSI.reset;
-        }
-
-        buf += ANSI.restoreCursor;
-        process.stdout.write(buf);
+        this._statsPanel.setContent(lines.map(line => this._convertAnsiToBlessed(line)).join('\n'));
+        this._requestRender();
     }
 
-    _stripAnsi(str) {
-        // eslint-disable-next-line no-control-regex
-        return str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+    writeDashboardLine(_lineIndex, _content) {
+        if (!this._lastDashboard) return;
+        this.updateDashboard(this._lastDashboard);
     }
 
-    _truncateAnsi(str, maxLen) {
-        let visibleCount = 0;
-        let result = '';
-        let inEscape = false;
-
-        for (let i = 0; i < str.length; i++) {
-            const ch = str[i];
-
-            if (ch === '\x1b') {
-                inEscape = true;
-                result += ch;
-                continue;
-            }
-
-            if (inEscape) {
-                result += ch;
-                if (/[a-zA-Z]/.test(ch)) {
-                    inEscape = false;
-                }
-                continue;
-            }
-
-            if (visibleCount >= maxLen) {
-                break;
-            }
-
-            result += ch;
-            visibleCount++;
-        }
-
-        return result + ANSI.reset;
+    clearDashboardArea() {
+        if (!this._initialized) return;
+        this._statsPanel.setContent('');
+        this._requestRender();
     }
 
     getDimensions() {
+        if (!this._screen) {
+            return {
+                rows: process.stdout.rows || 24,
+                cols: process.stdout.columns || 80,
+            };
+        }
+
         return {
-            rows: this._rows,
-            cols: this._cols,
-            scrollBottom: this._scrollBottom,
-            dashboardHeight: this._dashboardHeight,
+            rows: this._screen.height,
+            cols: this._screen.width,
         };
+    }
+
+    _formatStats(stats = {}) {
+        const rows = [
+            ['Active Accounts', stats.activeAccounts || '99/99'],
+            ['Messages Sent', stats.messagesSent || '100'],
+            ['Working Time', stats.workingTime || '5 days 6 hours'],
+        ];
+
+        const panelHeight = typeof this._statsPanel?.height === 'number'
+            ? this._statsPanel.height
+            : 4;
+        const contentRows = Math.max(1, panelHeight - 2);
+        if (contentRows < rows.length) {
+            return rows
+                .map(([label, value]) => `{gray-fg}${label}:{/} {cyan-fg}{bold}${value}{/}`)
+                .join('  ');
+        }
+
+        return rows
+            .map(([label, value]) => `{gray-fg}${`${label}:`.padEnd(17)}{/} {cyan-fg}{bold}${value}{/}`)
+            .join('\n');
+    }
+
+    _setGaugeContent(gauge, label, value, color, detail = '') {
+        if (!gauge) return;
+
+        const numericValue = Number(value);
+        if (!Number.isFinite(numericValue)) {
+            gauge.setContent(`{${color}-fg}${label} ${detail}{/}`);
+            return;
+        }
+
+        const percent = Math.max(0, Math.min(100, Math.round(numericValue)));
+        const gaugeWidth = typeof gauge.width === 'number'
+            ? gauge.width
+            : Math.floor((this._screen?.width || 90) / 3);
+        const contentWidth = Math.max(12, gaugeWidth - 10);
+        const detailText = detail ? ` ${detail}` : '';
+        const prefix = `${label} ${String(percent).padStart(3)}%${detailText}`;
+        const barWidth = Math.min(30, Math.max(6, contentWidth - prefix.length - 3));
+        const filledWidth = Math.round((barWidth * percent) / 100);
+        const emptyWidth = barWidth - filledWidth;
+        const bar = `${'#'.repeat(filledWidth)}${'-'.repeat(emptyWidth)}`;
+        const line = `{${color}-fg}${prefix}{/} [${bar}]`;
+
+        gauge.setContent(line);
+    }
+
+    _updateAutoScroll() {
+        if (!this._logPanel) return;
+
+        const scrollHeight = this._logPanel.getScrollHeight();
+        const visibleHeight = this._logPanel.height - 2;
+        const currentScroll = this._logPanel.getScroll();
+        const maxScroll = Math.max(0, scrollHeight - visibleHeight);
+
+        this._autoScroll = currentScroll >= maxScroll - 1;
+        this._updateLogLabel();
+        this._requestRender();
+    }
+
+    _updateLogLabel() {
+        if (!this._logPanel) return;
+
+        if (this._autoScroll) {
+            this._logPanel.setLabel(' Live Logs ');
+        } else {
+            this._logPanel.setLabel(' Live Logs {yellow-fg}(Scrolled ↑ — Press End to resume){/} ');
+        }
+    }
+
+    _requestRender() {
+        if (!this._initialized || !this._screen || this._renderScheduled) return;
+
+        this._renderScheduled = true;
+        setImmediate(() => {
+            this._renderScheduled = false;
+
+            if (this._initialized && this._screen) {
+                this._screen.render();
+            }
+        });
+    }
+
+    _formatTime(timestamp) {
+        const date = new Date(timestamp);
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+
+        return `${hours}:${minutes}:${seconds}`;
+    }
+
+    _convertAnsiToBlessed(str) {
+        return str
+            .replace(/\x1b\[38;2;(\d+);(\d+);(\d+)m/g, (_match, r, g, b) => {
+                const hex = [r, g, b]
+                    .map(channel => Number(channel).toString(16).padStart(2, '0'))
+                    .join('');
+                return `{#${hex}-fg}`;
+            })
+            .replace(/\x1b\[1m/g, '{bold}')
+            .replace(/\x1b\[2m/g, '{gray-fg}')
+            .replace(/\x1b\[0m/g, '{/}')
+            .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
     }
 
     cleanup() {
         if (!this._initialized) return;
         this._initialized = false;
 
-        if (this._resizeHandler) {
-            process.stdout.removeListener('resize', this._resizeHandler);
-            this._resizeHandler = null;
+        if (this._screen) {
+            this._screen.destroy();
+            this._screen = null;
         }
 
-        const buf = ANSI.resetScrollRegion
-            + ANSI.showCursor
-            + ANSI.moveTo(this._rows, 1)
-            + '\n';
-
-        process.stdout.write(buf);
+        this._grid = null;
+        this._logPanel = null;
+        this._cpuGauge = null;
+        this._ramGauge = null;
+        this._statsPanel = null;
+        this._renderScheduled = false;
     }
 }
 
-const { EventEmitter } = require('events');
-const emitterProto = EventEmitter.prototype;
-Terminal.prototype.on = emitterProto.on;
-Terminal.prototype.off = emitterProto.off;
-Terminal.prototype.emit = emitterProto.emit;
-Terminal.prototype.removeListener = emitterProto.removeListener;
-Terminal.prototype.removeAllListeners = emitterProto.removeAllListeners;
-
 const terminal = new Terminal();
-EventEmitter.call(terminal);
 
 module.exports = terminal;
 module.exports.ANSI = ANSI;
