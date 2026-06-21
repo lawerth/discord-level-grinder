@@ -19,8 +19,12 @@ const tokens = tokensContent
     .split(/\r?\n/)
     .map(line => {
         const hashIdx = line.indexOf('#');
-        const clean = hashIdx !== -1 ? line.substring(0, hashIdx) : line;
-        return clean.trim();
+        let clean = hashIdx !== -1 ? line.substring(0, hashIdx) : line;
+        clean = clean.trim();
+        if ((clean.startsWith('"') && clean.endsWith('"')) || (clean.startsWith("'") && clean.endsWith("'"))) {
+            clean = clean.slice(1, -1).trim();
+        }
+        return clean;
     })
     .filter(t => t.length > 0);
 
@@ -247,7 +251,7 @@ process.on('exit', () => {
             if (isInvalidated) return;
             isInvalidated = true;
 
-            if (isInitial) {
+            if (isInitial || !wasActive) {
                 Logger.error(`Token login failed: ${reason}`, index + 1);
             } else {
                 Logger.error(`Token became invalid during runtime: ${reason}`, index + 1);

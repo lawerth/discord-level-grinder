@@ -9,7 +9,6 @@ class Dashboard {
         this._refreshTimer = null;
         this._stateChangeHandler = null;
         this._resizeHandler = null;
-        this._lastCpuSample = null;
         this._initialized = false;
     }
 
@@ -35,7 +34,6 @@ class Dashboard {
         const ram = this._getRamUsage();
 
         terminal.updateDashboard({
-            cpuPercent: this._getCpuUsagePercent(),
             ramPercent: null,
             ramDetail: this._formatBytes(ram.used),
             statistics: this._getStatistics(snap),
@@ -48,34 +46,6 @@ class Dashboard {
             messagesSent: this._formatNumber(snap.messagesSent),
             workingTime: this._formatWorkingTime(state.getUptime()),
         };
-    }
-
-    _getCpuUsagePercent() {
-        const current = this._readCpuSample();
-
-        if (!this._lastCpuSample) {
-            this._lastCpuSample = current;
-            return 37;
-        }
-
-        const idleDiff = current.idle - this._lastCpuSample.idle;
-        const totalDiff = current.total - this._lastCpuSample.total;
-        this._lastCpuSample = current;
-
-        if (totalDiff <= 0) return 0;
-
-        return this._clampPercent((1 - idleDiff / totalDiff) * 100);
-    }
-
-    _readCpuSample() {
-        return os.cpus().reduce((sample, cpu) => {
-            const total = Object.values(cpu.times).reduce((sum, time) => sum + time, 0);
-
-            return {
-                idle: sample.idle + cpu.times.idle,
-                total: sample.total + total,
-            };
-        }, { idle: 0, total: 0 });
     }
 
     _getRamUsage() {
@@ -141,8 +111,6 @@ class Dashboard {
             terminal.removeListener('resize', this._resizeHandler);
             this._resizeHandler = null;
         }
-
-        this._lastCpuSample = null;
     }
 }
 

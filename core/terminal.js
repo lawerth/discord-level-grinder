@@ -240,7 +240,7 @@ class Terminal extends EventEmitter {
         if (!this._initialized || !data) return;
 
         this._lastDashboard = data;
-        this._statsPanel.setContent(this._formatStats(data.statistics, data.cpuPercent, data.ramDetail));
+        this._statsPanel.setContent(this._formatStats(data.statistics, data.ramDetail));
         this._requestRender();
     }
 
@@ -276,12 +276,11 @@ class Terminal extends EventEmitter {
         };
     }
 
-    _formatStats(stats = {}, cpuPercent, ramDetail) {
+    _formatStats(stats = {}, ramDetail) {
         const items = [
             ['Active Accounts', `{cyan-fg}{bold}${stats.activeAccounts || '0/0'}{/}`],
             ['Messages Sent', `{cyan-fg}{bold}${stats.messagesSent || '0'}{/}`],
             ['Working Time', `{cyan-fg}{bold}${stats.workingTime || '0 seconds'}{/}`],
-            ['CPU', this._formatGaugeInline(cpuPercent, 'green')],
             ['RAM', ramDetail ? `{cyan-fg}{bold}${ramDetail}{/}` : '{cyan-fg}{bold}0 MB{/}'],
         ];
 
