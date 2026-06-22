@@ -59,7 +59,7 @@ dashboard.init();
 networkMonitor.start();
 
 const INTERVAL = config.interval * 1000;
-const { channels, adminID, prefix, specialMessages = [] } = config;
+const { channels, adminID, prefix } = config;
 
 let successCount = 0;
 const totalCount = tokens.length;
@@ -188,18 +188,11 @@ process.on('exit', () => {
         const timers = {
             randomMessageTimeout: null,
             randomMessageInterval: null,
-            specialMessageTimeouts: [],
-            specialMessageIntervals: [],
             cacheSweepInterval: null
         };
 
         const performCacheSweep = () => {
             const channelSet = new Set(channels);
-            specialMessages.forEach(msg => {
-                if (msg.channelId) {
-                    channelSet.add(msg.channelId);
-                }
-            });
 
             const targetGuildIds = new Set();
             channelSet.forEach(chId => {
@@ -246,7 +239,7 @@ process.on('exit', () => {
         let messageCount = 0;
         let lastChannelID = null;
         let lastMessageTime = null;
-        let specialSentCount = new Map();
+
 
         let wasActive = false;
         let isInvalidated = false;
@@ -283,10 +276,7 @@ process.on('exit', () => {
                 clearInterval(timers.randomMessageInterval);
                 timers.randomMessageInterval = null;
             }
-            timers.specialMessageTimeouts.forEach(tid => clearTimeout(tid));
-            timers.specialMessageIntervals.forEach(iid => clearInterval(iid));
-            timers.specialMessageTimeouts = [];
-            timers.specialMessageIntervals = [];
+
 
             sendQueue.clear();
         };
@@ -352,76 +342,6 @@ process.on('exit', () => {
                 }, INTERVAL);
 
             }, initialDelay);
-
-            specialMessages.forEach((msg, i) => {
-                const { content, startAfter, repeat, interval, channelId, perClientDelay } = msg;
-                if (
-                    !content ||
-                    typeof startAfter !== 'number' || startAfter < 0 ||
-                    typeof repeat !== 'number' || repeat <= 0 ||
-                    typeof interval !== 'number' || interval <= 0
-                ) {
-                    Logger.error(`Invalid special message config at index ${i}. Skipping.`, index + 1);
-                    return;
-                }
-
-                const delayMs = interval * 1000;
-                const delayUntilStart = startAfter * 1000 + ((typeof perClientDelay === 'number') ? perClientDelay : 0) * 1000 * index;
-                const id = `${i}`;
-
-                specialSentCount.set(id, 0);
-
-                const timeoutId = setTimeout(() => {
-                    const intervalHandle = setInterval(() => {
-                        const sent = specialSentCount.get(id) || 0;
-                        if (sent >= repeat) {
-                            clearInterval(intervalHandle);
-                            specialSentCount.delete(id);
-                            const idx = timers.specialMessageIntervals.indexOf(intervalHandle);
-                            if (idx !== -1) timers.specialMessageIntervals.splice(idx, 1);
-                            return;
-                        }
-
-                        const targetChannelId = channelId
-                            ? channelId
-                            : channels[Math.floor(Math.random() * channels.length)];
-
-                        sendQueue.enqueue(async () => {
-                            if (isPaused) return;
-                            if (!networkMonitor.online) return;
-                            const targetChannel = client.channels.cache.get(targetChannelId);
-                            if (!targetChannel) {
-                                Logger.error(`Special message channel not found: ${targetChannelId}`, index + 1);
-                                return;
-                            }
-                            try {
-                                await targetChannel.send(content);
-                                specialSentCount.set(id, (specialSentCount.get(id) || 0) + 1);
-                                messageCount++;
-                                lastChannelID = targetChannel.id;
-                                lastMessageTime = Date.now();
-
-                                state.increment('messagesSent');
-                            } catch (err) {
-                                if (networkMonitor.handleError(err)) return;
-                                if (err.httpStatus === 429 || (err.message && err.message.includes('rate limit'))) {
-                                    state.increment('rateLimits');
-                                    Logger.warning(`Rate limited (special msg)`, index + 1);
-                                } else if (err.httpStatus === 401 || (err.message && (err.message.includes('401') || err.message.toLowerCase().includes('unauthorized') || err.message.toLowerCase().includes('token')))) {
-                                    handleTokenInvalidation(err.message);
-                                } else {
-                                    Logger.error(`Special message send error: ${err.message}`, index + 1);
-                                }
-                            }
-                        });
-
-                    }, delayMs);
-
-                    timers.specialMessageIntervals.push(intervalHandle);
-                }, delayUntilStart);
-
-                timers.specialMessageTimeouts.push(timeoutId);
-            });
         };
 
         timers.cacheSweepInterval = setInterval(() => {
@@ -440,14 +360,7 @@ process.on('exit', () => {
 
             state.increment('activeAccounts');
 
-            const allTargetChannels = new Set(channels);
-            specialMessages.forEach(msg => {
-                if (msg.channelId) {
-                    allTargetChannels.add(msg.channelId);
-                }
-            });
-
-            for (const chId of allTargetChannels) {
+            for (const chId of channels) {
                 try {
                     await client.channels.fetch(chId);
                 } catch (err) {
@@ -482,10 +395,6 @@ process.on('exit', () => {
                         },
                         clearAllTimers,
                         startTimers,
-                        messageCount,
-                        lastChannelID,
-                        lastMessageTime,
-                        specialSentCount,
                         sendQueue,
                         state,
                     });

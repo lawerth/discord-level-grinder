@@ -6,15 +6,5 @@
   ],
   "interval": 60,
   "adminID": "your_discord_id",
-  "prefix": "!",
-  "specialMessages": [
-    {
-      "content": "Hello!",
-      "startAfter": 3600,
-      "repeat": 3,
-      "interval": 60,
-      "channelId": "optional_channel_id",
-      "perClientDelay": 10
-    }
-  ]
+  "prefix": "!"
 }
