@@ -1,6 +1,8 @@
 const { Client, Options } = require('discord.js-selfbot-v13');
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
+const tls = require('tls');
 const config = require('./settings/config.json');
 const sentences = require('./data/sentences.json');
 const terminal = require('./core/terminal');
@@ -8,6 +10,57 @@ const Logger = require('./core/logger');
 const state = require('./core/state');
 const dashboard = require('./core/dashboard');
 const networkMonitor = require('./core/network');
+
+const CHROME_USER_AGENT =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
+
+const CHROME_CIPHERS = [
+    'TLS_AES_128_GCM_SHA256',
+    'TLS_AES_256_GCM_SHA384',
+    'TLS_CHACHA20_POLY1305_SHA256',
+    'ECDHE-ECDSA-AES128-GCM-SHA256',
+    'ECDHE-RSA-AES128-GCM-SHA256',
+    'ECDHE-ECDSA-AES256-GCM-SHA384',
+    'ECDHE-RSA-AES256-GCM-SHA384',
+    'ECDHE-ECDSA-CHACHA20-POLY1305',
+    'ECDHE-RSA-CHACHA20-POLY1305',
+    'ECDHE-RSA-AES128-SHA',
+    'ECDHE-RSA-AES256-SHA',
+    'AES128-GCM-SHA256',
+    'AES256-GCM-SHA384',
+    'AES128-SHA',
+    'AES256-SHA',
+].join(':');
+
+// Create a TLS-patched HTTPS agent for WebSocket connections
+const wsAgent = new https.Agent({
+    ciphers: CHROME_CIPHERS,
+    honorCipherOrder: true,
+    minVersion: 'TLSv1.2',
+});
+
+// Monkey-patch the selfbot library's WebSocket.create to inject browser headers
+const discordWs = require('discord.js-selfbot-v13/src/WebSocket');
+const _originalCreate = discordWs.create;
+discordWs.create = (gateway, query = {}, ...args) => {
+    // Merge browser-like headers into the ws options
+    const wsOptions = args[0] || {};
+    wsOptions.headers = {
+        'User-Agent': CHROME_USER_AGENT,
+        'Origin': 'https://discord.com',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        ...(wsOptions.headers || {}),
+    };
+    // Use TLS-patched agent if no custom agent is set
+    if (!wsOptions.agent) {
+        wsOptions.agent = wsAgent;
+    }
+    args[0] = wsOptions;
+    return _originalCreate(gateway, query, ...args);
+};
+// --- End of Termux/Linux fix ---
 
 const tokensPath = path.join(__dirname, 'settings', 'tokens.txt');
 if (!fs.existsSync(tokensPath)) {
@@ -161,6 +214,10 @@ process.on('exit', () => {
         const token = tokens[index];
         const client = new Client({
             sweepInterval: 300,
+            ws: {
+                capabilities: 30717,
+                agent: wsAgent,
+            },
             makeCache: Options.cacheWithLimits({
                 MessageManager: 0,
                 GuildMemberManager: 0,
@@ -264,7 +321,7 @@ process.on('exit', () => {
 
             try {
                 client.destroy();
-            } catch {}
+            } catch { }
         };
 
         const clearAllTimers = () => {
