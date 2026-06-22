@@ -7,6 +7,7 @@ const terminal = require('./core/terminal');
 const Logger = require('./core/logger');
 const state = require('./core/state');
 const dashboard = require('./core/dashboard');
+const networkMonitor = require('./core/network');
 
 const tokensPath = path.join(__dirname, 'settings', 'tokens.txt');
 if (!fs.existsSync(tokensPath)) {
@@ -55,6 +56,7 @@ if (typeof config.prefix !== 'string' || config.prefix.length === 0) {
 
 terminal.init();
 dashboard.init();
+networkMonitor.start();
 
 const INTERVAL = config.interval * 1000;
 const { channels, adminID, prefix, specialMessages = [] } = config;
@@ -122,6 +124,8 @@ function gracefulShutdown(signal) {
     if (isShuttingDown) return;
     isShuttingDown = true;
     Logger.warning(`Received ${signal}. Shutting down gracefully...`);
+
+    networkMonitor.stop();
 
     for (const cleanup of allTimerCleanups) {
         cleanup();
@@ -311,6 +315,7 @@ process.on('exit', () => {
 
                     sendQueue.enqueue(async () => {
                         if (isPaused) return;
+                        if (!networkMonitor.online) return;
                         const channel = client.channels.cache.get(randomChannelId);
                         if (!channel) {
                             Logger.error(`Channel not found: ${randomChannelId}`, index + 1);
@@ -325,6 +330,7 @@ process.on('exit', () => {
 
                             state.increment('messagesSent');
                         } catch (err) {
+                            if (networkMonitor.handleError(err)) return;
                             if (err.httpStatus === 429 || (err.message && err.message.includes('rate limit'))) {
                                 state.increment('rateLimits');
                                 const retryAfter = err.retryAfter || 'unknown';
@@ -382,6 +388,7 @@ process.on('exit', () => {
 
                         sendQueue.enqueue(async () => {
                             if (isPaused) return;
+                            if (!networkMonitor.online) return;
                             const targetChannel = client.channels.cache.get(targetChannelId);
                             if (!targetChannel) {
                                 Logger.error(`Special message channel not found: ${targetChannelId}`, index + 1);
@@ -396,6 +403,7 @@ process.on('exit', () => {
 
                                 state.increment('messagesSent');
                             } catch (err) {
+                                if (networkMonitor.handleError(err)) return;
                                 if (err.httpStatus === 429 || (err.message && err.message.includes('rate limit'))) {
                                     state.increment('rateLimits');
                                     Logger.warning(`Rate limited (special msg)`, index + 1);
