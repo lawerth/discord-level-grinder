@@ -555,11 +555,10 @@ tokenWatcher.on('tokenAdded', ({ index, token }) => {
     startAccount(index, token).then(success => {
         if (success) {
             successCount++;
-            Logger.success(`New account at position ${index + 1} logged in successfully.`, index + 1);
         }
         saveTokensFile();
-    }).catch(err => {
-        Logger.error(`Failed to start new account at position ${index + 1}: ${err.message}`, index + 1);
+    }).catch(() => {
+
     });
 });
 
