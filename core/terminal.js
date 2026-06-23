@@ -284,6 +284,18 @@ class Terminal extends EventEmitter {
             ['RAM', ramDetail ? `{cyan-fg}{bold}${ramDetail}{/}` : '{cyan-fg}{bold}0 MB{/}'],
         ];
 
+        const invalidCount = stats.invalidTokens || 0;
+        const invalidAccounts = stats.invalidAccounts || [];
+
+        if (invalidCount > 0) {
+            const names = invalidAccounts.map(a => a.username).join(', ');
+            const label = `Invalid Accounts`;
+            const value = names
+                ? `{red-fg}{bold}${invalidCount}{/} {red-fg}(${names}){/}`
+                : `{red-fg}{bold}${invalidCount}{/}`;
+            items.push([label, value]);
+        }
+
         const panelHeight = typeof this._statsPanel?.height === 'number'
             ? this._statsPanel.height
             : 4;

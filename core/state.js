@@ -18,6 +18,9 @@ class State extends EventEmitter {
             startTime: Date.now(),
             isPaused: false,
         };
+
+        // token index -> { username, status } mapping
+        this._accountMap = new Map();
     }
 
     get(field) {
@@ -41,6 +44,39 @@ class State extends EventEmitter {
         if (typeof this._data[field] !== 'number') return;
         this._data[field] = Math.max(0, this._data[field] - 1);
         this.emit('change', field, this._data[field]);
+    }
+
+    /**
+     * Set account info for a token index.
+     * @param {number} index - Token index (0-based)
+     * @param {string} username - Discord username
+     * @param {'active'|'invalid'|'pending'} status
+     */
+    setAccount(index, username, status) {
+        this._accountMap.set(index, { username, status });
+        this.emit('change', 'accountMap', this._accountMap);
+    }
+
+    /**
+     * Get list of invalid accounts with their usernames.
+     * @returns {Array<{index: number, username: string}>}
+     */
+    getInvalidAccounts() {
+        const result = [];
+        for (const [index, info] of this._accountMap) {
+            if (info.status === 'invalid') {
+                result.push({ index, username: info.username });
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Get full account map.
+     * @returns {Map<number, {username: string, status: string}>}
+     */
+    getAccountMap() {
+        return this._accountMap;
     }
 
     addChannel(channelId) {
@@ -87,6 +123,7 @@ class State extends EventEmitter {
             uptime: this.getFormattedUptime(),
             memoryMB: this.getMemoryMB(),
             isPaused: this._data.isPaused,
+            invalidAccounts: this.getInvalidAccounts(),
         };
     }
 
@@ -98,6 +135,7 @@ class State extends EventEmitter {
         this._data.rateLimits = 0;
         this._data.activeChannels.clear();
         this._data.isPaused = false;
+        this._accountMap.clear();
         this.emit('change', '_all', null);
     }
 }

@@ -45,6 +45,8 @@ class Dashboard {
             activeAccounts: `${this._formatNumber(snap.activeAccounts)}/${this._formatNumber(snap.totalAccounts)}`,
             messagesSent: this._formatNumber(snap.messagesSent),
             workingTime: this._formatWorkingTime(state.getUptime()),
+            invalidTokens: snap.invalidTokens,
+            invalidAccounts: snap.invalidAccounts || [],
         };
     }
 

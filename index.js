@@ -119,6 +119,29 @@ const totalCount = tokens.length;
 const clients = [];
 const allTimerCleanups = [];
 const CACHE_SWEEP_INTERVAL = 5 * 60 * 1000;
+const accountsFilePath = path.join(__dirname, 'data', 'accounts.json');
+
+function saveAccountsFile() {
+    const accountMap = state.getAccountMap();
+    const accounts = [];
+    for (const [idx, info] of accountMap) {
+        accounts.push({
+            index: idx + 1,
+            token: tokens[idx] || 'unknown',
+            username: info.username,
+            status: info.status,
+        });
+    }
+    const data = {
+        lastUpdated: new Date().toISOString(),
+        accounts,
+    };
+    try {
+        fs.writeFileSync(accountsFilePath, JSON.stringify(data, null, 2), 'utf8');
+    } catch (err) {
+        Logger.error(`Failed to save accounts file: ${err.message}`);
+    }
+}
 
 state.set('totalAccounts', totalCount);
 
@@ -300,10 +323,15 @@ process.on('exit', () => {
 
         let wasActive = false;
         let isInvalidated = false;
+        let accountUsername = null;
 
         const handleTokenInvalidation = (reason, isInitial = false) => {
             if (isInvalidated) return;
             isInvalidated = true;
+
+            const invalidName = accountUsername || 'Unknown';
+            state.setAccount(index, invalidName, 'invalid');
+            saveAccountsFile();
 
             if (isInitial || !wasActive) {
                 Logger.error(`Token login failed: ${reason}`, index + 1);
@@ -407,15 +435,18 @@ process.on('exit', () => {
 
         client.on('shardDisconnect', (event) => {
             if (event && event.code === 4004) {
-                handleTokenInvalidation('Gateway close code 4004 (Authentication failed)');
+                handleTokenInvalidation('Invalid token');
             }
         });
 
         client.on('ready', async () => {
             wasActive = true;
+            accountUsername = client.user.username;
             Logger.success(`Logged in as ${client.user.username}`, index + 1);
 
+            state.setAccount(index, client.user.username, 'active');
             state.increment('activeAccounts');
+            saveAccountsFile();
 
             for (const chId of channels) {
                 try {

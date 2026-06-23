@@ -65,6 +65,8 @@ class NetworkMonitor extends EventEmitter {
             'unable to get local issuer certificate',
             'request to https://discord.com',
             'request to https://discordapp.com',
+            'this operation was aborted',
+            'aborted',
         ];
 
         return networkPatterns.some(pattern => msg.includes(pattern) || code.includes(pattern));
