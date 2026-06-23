@@ -101,11 +101,13 @@ class TokenWatcher extends EventEmitter {
         }
 
         if (newParsed.length < oldTokens.length) {
-            for (let i = newParsed.length; i < oldTokens.length; i++) {
+            const removedIndices = [];
+            for (let i = oldTokens.length - 1; i >= newParsed.length; i--) {
                 Logger.info(`Token removed at position ${i + 1}. Stopping account...`, i + 1);
-                this.emit('tokenRemoved', { index: i });
+                removedIndices.push(i);
             }
             this._currentTokens.length = newParsed.length;
+            this.emit('tokensRemoved', { indices: removedIndices });
         }
     }
 

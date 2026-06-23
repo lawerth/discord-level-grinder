@@ -562,33 +562,49 @@ tokenWatcher.on('tokenAdded', ({ index, token }) => {
     });
 });
 
-tokenWatcher.on('tokenRemoved', ({ index }) => {
-    if (clientCleanups[index]) {
-        clientCleanups[index]();
-        clientCleanups[index] = null;
-    }
-    if (clients[index]) {
-        try {
-            clients[index].destroy();
-        } catch { }
-        clients[index] = null;
+tokenWatcher.on('tokensRemoved', ({ indices }) => {
+    // indices are already sorted from highest to lowest
+    for (const index of indices) {
+        if (clientCleanups[index]) {
+            clientCleanups[index]();
+            clientCleanups[index] = null;
+        }
+        if (clients[index]) {
+            try {
+                clients[index].destroy();
+            } catch { }
+            clients[index] = null;
+        }
+
+        const accountInfo = state.getAccountMap().get(index);
+        if (accountInfo && accountInfo.status === 'active') {
+            state.decrement('activeAccounts');
+        } else if (accountInfo && accountInfo.status === 'invalid') {
+            state.decrement('invalidTokens');
+        }
+
+        tokens.splice(index, 1);
+        clients.splice(index, 1);
+        clientCleanups.splice(index, 1);
     }
 
-    const accountInfo = state.getAccountMap().get(index);
-    if (accountInfo && accountInfo.status === 'active') {
-        state.decrement('activeAccounts');
-    } else if (accountInfo && accountInfo.status === 'invalid') {
-        state.decrement('invalidTokens');
+    // Rebuild accountMap with corrected indices
+    const oldMap = state.getAccountMap();
+    const remaining = [];
+    for (const [idx, info] of oldMap) {
+        if (!indices.includes(idx)) {
+            remaining.push({ oldIndex: idx, info });
+        }
     }
+    remaining.sort((a, b) => a.oldIndex - b.oldIndex);
+    oldMap.clear();
+    remaining.forEach((entry, newIndex) => {
+        oldMap.set(newIndex, entry.info);
+    });
 
-    tokens.splice(index, 1);
-    clients.splice(index, 1);
-    clientCleanups.splice(index, 1);
     totalCount = tokens.length;
     state.set('totalAccounts', totalCount);
-
-    state.getAccountMap().delete(index);
-    Logger.info(`Account at position ${index + 1} removed.`, index + 1);
+    state.emit('change', 'accountMap', oldMap);
     saveTokensFile();
 });
 
