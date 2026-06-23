@@ -70,7 +70,6 @@ class TokenWatcher extends EventEmitter {
             return;
         }
 
-        // If the content matches what we last wrote, it's our own write — skip it
         if (this._lastWrittenContent !== null && content === this._lastWrittenContent) {
             this._lastWrittenContent = null;
             return;
@@ -129,21 +128,7 @@ class TokenWatcher extends EventEmitter {
         } catch {
         }
 
-        const headerLines = [];
-        let tokenStartIdx = 0;
-        for (let i = 0; i < existingLines.length; i++) {
-            const trimmed = existingLines[i].trim();
-            if (trimmed.startsWith('#') || trimmed.length === 0) {
-                if (tokenStartIdx === i) {
-                    headerLines.push(existingLines[i]);
-                    tokenStartIdx = i + 1;
-                }
-            } else {
-                break;
-            }
-        }
-
-        const tokenLines = tokensList.map((token, i) => {
+        const updatedTokenLines = tokensList.map((token, i) => {
             const info = accountMap.get(i);
             if (info && info.username && info.username !== 'Unknown' && info.username !== 'Reconnecting...') {
                 return `${token} #${info.username}`;
@@ -151,7 +136,26 @@ class TokenWatcher extends EventEmitter {
             return token;
         });
 
-        const finalLines = [...headerLines, ...tokenLines];
+        const finalLines = [];
+        let tokenIdx = 0;
+
+        for (let i = 0; i < existingLines.length; i++) {
+            const trimmed = existingLines[i].trim();
+
+            if (trimmed.length === 0 || trimmed.startsWith('#')) {
+                finalLines.push(existingLines[i]);
+            } else {
+                if (tokenIdx < updatedTokenLines.length) {
+                    finalLines.push(updatedTokenLines[tokenIdx]);
+                    tokenIdx++;
+                }
+            }
+        }
+
+        while (tokenIdx < updatedTokenLines.length) {
+            finalLines.push(updatedTokenLines[tokenIdx]);
+            tokenIdx++;
+        }
 
         const finalContent = finalLines.join('\n');
 
