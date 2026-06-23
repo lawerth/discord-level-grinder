@@ -76,7 +76,7 @@ class NetworkMonitor extends EventEmitter {
         this._online = false;
         this._offlineSince = Date.now();
 
-        Logger.warning('Internet connection lost. Message sending paused.');
+        Logger.warning('Internet connection lost. Waiting for connection...');
         this.emit('offline');
 
         this._scheduleProbe();
@@ -90,7 +90,7 @@ class NetworkMonitor extends EventEmitter {
             const downtime = this._formatDuration(Date.now() - this._offlineSince);
             this._offlineSince = null;
 
-            Logger.success(`Internet connection restored (was offline for ${downtime}). Resuming message sending.`);
+            Logger.success(`Internet connection restored, was offline for ${downtime}.`);
             this.emit('online');
         }
 

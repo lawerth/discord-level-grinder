@@ -1,5 +1,4 @@
 node_modules/
 settings/tokens.txt
 settings/config.json
-data/accounts.json
 logs/

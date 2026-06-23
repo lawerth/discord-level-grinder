@@ -48,6 +48,7 @@ class Dashboard {
             workingTime: this._formatWorkingTime(state.getUptime()),
             networkStatus: networkMonitor.online,
             invalidTokens: snap.invalidTokens,
+            replacedTokens: snap.replacedTokens,
             invalidAccounts: snap.invalidAccounts || [],
         };
     }

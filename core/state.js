@@ -11,6 +11,7 @@ class State extends EventEmitter {
             activeAccounts: 0,
             totalAccounts: 0,
             invalidTokens: 0,
+            replacedTokens: 0,
             messagesSent: 0,
             commandsUsed: 0,
             rateLimits: 0,
@@ -19,7 +20,6 @@ class State extends EventEmitter {
             isPaused: false,
         };
 
-        // token index -> { username, status } mapping
         this._accountMap = new Map();
     }
 
@@ -116,6 +116,7 @@ class State extends EventEmitter {
             activeAccounts: this._data.activeAccounts,
             totalAccounts: this._data.totalAccounts,
             invalidTokens: this._data.invalidTokens,
+            replacedTokens: this._data.replacedTokens,
             messagesSent: this._data.messagesSent,
             commandsUsed: this._data.commandsUsed,
             rateLimits: this._data.rateLimits,
@@ -130,6 +131,7 @@ class State extends EventEmitter {
     reset() {
         this._data.activeAccounts = 0;
         this._data.invalidTokens = 0;
+        this._data.replacedTokens = 0;
         this._data.messagesSent = 0;
         this._data.commandsUsed = 0;
         this._data.rateLimits = 0;

@@ -299,6 +299,11 @@ class Terminal extends EventEmitter {
             items.push([label, value]);
         }
 
+        const replacedCount = stats.replacedTokens || 0;
+        if (replacedCount > 0) {
+            items.push(['Replaced Tokens', `{green-fg}{bold}${replacedCount}{/}`]);
+        }
+
         const panelHeight = typeof this._statsPanel?.height === 'number'
             ? this._statsPanel.height
             : 4;
