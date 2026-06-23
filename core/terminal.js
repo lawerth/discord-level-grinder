@@ -282,6 +282,9 @@ class Terminal extends EventEmitter {
             ['Messages Sent', `{cyan-fg}{bold}${stats.messagesSent || '0'}{/}`],
             ['Working Time', `{cyan-fg}{bold}${stats.workingTime || '0 seconds'}{/}`],
             ['RAM', ramDetail ? `{cyan-fg}{bold}${ramDetail}{/}` : '{cyan-fg}{bold}0 MB{/}'],
+            ['Network Status', stats.networkStatus !== false
+                ? '{green-fg}{bold}Online{/}'
+                : '{red-fg}{bold}Offline{/}'],
         ];
 
         const invalidCount = stats.invalidTokens || 0;

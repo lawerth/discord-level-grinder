@@ -3,6 +3,7 @@
 const os = require('os');
 const state = require('./state');
 const terminal = require('./terminal');
+const networkMonitor = require('./network');
 
 class Dashboard {
     constructor() {
@@ -45,6 +46,7 @@ class Dashboard {
             activeAccounts: `${this._formatNumber(snap.activeAccounts)}/${this._formatNumber(snap.totalAccounts)}`,
             messagesSent: this._formatNumber(snap.messagesSent),
             workingTime: this._formatWorkingTime(state.getUptime()),
+            networkStatus: networkMonitor.online,
             invalidTokens: snap.invalidTokens,
             invalidAccounts: snap.invalidAccounts || [],
         };
