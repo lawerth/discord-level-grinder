@@ -62,8 +62,11 @@ class Terminal extends EventEmitter {
             smartCSR: true,
             fullUnicode: true,
             dockBorders: true,
+            mouse: true,
             title: 'Discord Level Grinder Dashboard',
         });
+
+        this._screen.enableMouse();
 
         this._screen.key(['q', 'Q', 'C-c'], () => {
             if (process.listenerCount('SIGINT') > 0) {
@@ -117,15 +120,46 @@ class Terminal extends EventEmitter {
             },
         });
 
+        // --- Mouse / Touch drag-to-scroll support ---
+        this._dragState = null;
+
+        this._logPanel.on('mousedown', (_data) => {
+            this._dragState = { startY: _data.y, lastY: _data.y };
+        });
+
+        this._screen.on('mousemove', (_data) => {
+            if (!this._dragState) return;
+
+            const delta = this._dragState.lastY - _data.y;
+            if (delta !== 0) {
+                this._logPanel.scroll(delta);
+                this._dragState.lastY = _data.y;
+
+                if (delta > 0) {
+                    this._autoScroll = false;
+                    this._updateLogLabel();
+                } else {
+                    this._updateAutoScroll();
+                }
+            }
+        });
+
+        this._screen.on('mouseup', () => {
+            this._dragState = null;
+        });
+
+        // --- Scroll event handlers ---
         this._logPanel.on('scroll', () => {
             this._updateAutoScroll();
         });
 
         this._logPanel.on('wheeldown', () => {
+            this._logPanel.scroll(3);
             this._updateAutoScroll();
         });
 
         this._logPanel.on('wheelup', () => {
+            this._logPanel.scroll(-3);
             this._autoScroll = false;
             this._updateLogLabel();
             this._requestRender();
@@ -299,10 +333,8 @@ class Terminal extends EventEmitter {
             items.push([label, value]);
         }
 
-        const replacedCount = stats.replacedTokens || 0;
-        if (replacedCount > 0) {
-            items.push(['Replaced Tokens', `{green-fg}{bold}${replacedCount}{/}`]);
-        }
+
+
 
         const panelHeight = typeof this._statsPanel?.height === 'number'
             ? this._statsPanel.height
@@ -404,6 +436,7 @@ class Terminal extends EventEmitter {
         this._grid = null;
         this._logPanel = null;
         this._statsPanel = null;
+        this._dragState = null;
         this._renderScheduled = false;
     }
 }

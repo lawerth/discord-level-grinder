@@ -527,9 +527,6 @@ async function replaceToken(index, newToken) {
     if (success) {
         successCount++;
         state.increment('replacedTokens');
-        Logger.success(`Token on line ${index + 1} successfully replaced and logged in.`, index + 1);
-    } else {
-        Logger.error(`Token replacement on line ${index + 1} failed — new token is also invalid.`, index + 1);
     }
 }
 

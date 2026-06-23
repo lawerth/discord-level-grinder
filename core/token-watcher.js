@@ -10,8 +10,8 @@ class TokenWatcher extends EventEmitter {
         this._tokensPath = null;
         this._currentTokens = [];
         this._watching = false;
-        this._selfWriting = false;
-        this._pollIntervalMs = 10_000;
+        this._lastWrittenContent = null;
+        this._pollIntervalMs = 3_000;
     }
 
     /**
@@ -28,8 +28,6 @@ class TokenWatcher extends EventEmitter {
         fs.watchFile(this._tokensPath, { interval: this._pollIntervalMs }, () => {
             this._onFileChange();
         });
-
-        Logger.info('Token file watcher started');
     }
 
     stop() {
@@ -64,11 +62,6 @@ class TokenWatcher extends EventEmitter {
     }
 
     _onFileChange() {
-        if (this._selfWriting) {
-            this._selfWriting = false;
-            return;
-        }
-
         let content;
         try {
             content = fs.readFileSync(this._tokensPath, 'utf8');
@@ -76,6 +69,13 @@ class TokenWatcher extends EventEmitter {
             Logger.error(`Failed to read tokens file: ${err.message}`);
             return;
         }
+
+        // If the content matches what we last wrote, it's our own write — skip it
+        if (this._lastWrittenContent !== null && content === this._lastWrittenContent) {
+            this._lastWrittenContent = null;
+            return;
+        }
+        this._lastWrittenContent = null;
 
         const newParsed = this._parseTokens(content);
         const oldTokens = this._currentTokens;
@@ -113,7 +113,7 @@ class TokenWatcher extends EventEmitter {
     /**
      * Write the tokens file with usernames as inline comments.
      * Preserves standalone comment lines and blank lines from the original file.
-     * Sets _selfWriting flag to prevent the watcher from re-processing.
+     * Stores written content to prevent the watcher from re-processing our own writes.
      * @param {string[]} tokensList - Array of tokens
      * @param {Map} accountMap - state account map (index -> { username, status })
      * @param {string} [filePath] - Optional fallback path if _tokensPath is not set yet
@@ -153,12 +153,14 @@ class TokenWatcher extends EventEmitter {
 
         const finalLines = [...headerLines, ...tokenLines];
 
-        this._selfWriting = true;
+        const finalContent = finalLines.join('\n');
+
         try {
-            fs.writeFileSync(targetPath, finalLines.join('\n'), 'utf8');
+            this._lastWrittenContent = finalContent;
+            fs.writeFileSync(targetPath, finalContent, 'utf8');
         } catch (err) {
             Logger.error(`Failed to write tokens file: ${err.message}`);
-            this._selfWriting = false;
+            this._lastWrittenContent = null;
         }
     }
 
