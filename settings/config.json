@@ -5,6 +5,9 @@
     "channel_id_3"
   ],
   "interval": 60,
-  "adminID": "your_discord_id",
-  "prefix": "!"
+  "commands": {
+    "enabled": true,
+    "prefix": "!",
+    "adminID": "your_discord_id"
+  }
 }

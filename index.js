@@ -72,7 +72,6 @@ const tokenEntries = [];
 
 for (const line of tokenLines) {
     const trimmedLine = line.trim();
-    // Skip standalone comment lines (lines starting with #)
     if (trimmedLine.startsWith('#') || trimmedLine.length === 0) continue;
 
     const hashIdx = trimmedLine.indexOf('#');
@@ -110,14 +109,26 @@ if (typeof config.interval !== 'number' || config.interval <= 0) {
     process.exit(1);
 }
 
-if (typeof config.adminID !== 'string' || config.adminID.length === 0) {
-    console.error('[ERROR] "adminID" must be a valid string in settings/config.json.');
+if (!config.commands || typeof config.commands !== 'object') {
+    console.error('[ERROR] "commands" must be a valid object in settings/config.json.');
     process.exit(1);
 }
 
-if (typeof config.prefix !== 'string' || config.prefix.length === 0) {
-    console.error('[ERROR] "prefix" must be a valid string in settings/config.json.');
+if (typeof config.commands.enabled !== 'boolean') {
+    console.error('[ERROR] "commands.enabled" must be a boolean in settings/config.json.');
     process.exit(1);
+}
+
+if (config.commands.enabled) {
+    if (typeof config.commands.adminID !== 'string' || config.commands.adminID.length === 0) {
+        console.error('[ERROR] "commands.adminID" must be a valid string in settings/config.json.');
+        process.exit(1);
+    }
+
+    if (typeof config.commands.prefix !== 'string' || config.commands.prefix.length === 0) {
+        console.error('[ERROR] "commands.prefix" must be a valid string in settings/config.json.');
+        process.exit(1);
+    }
 }
 
 terminal.init();
@@ -125,7 +136,10 @@ dashboard.init();
 networkMonitor.start();
 
 const INTERVAL = config.interval * 1000;
-const { channels, adminID, prefix } = config;
+const { channels } = config;
+const commandsEnabled = config.commands.enabled;
+const adminID = config.commands.adminID || null;
+const prefix = config.commands.prefix || '!';
 
 let successCount = 0;
 let totalCount = tokens.length;
@@ -235,6 +249,7 @@ process.on('exit', () => {
 async function startAccount(index, token) {
     const client = new Client({
         sweepInterval: 300,
+        presence: false,
         ws: {
             capabilities: 30717,
             agent: wsAgent,
@@ -441,6 +456,7 @@ async function startAccount(index, token) {
         accountUsername = client.user.username;
         Logger.success(`Logged in as ${client.user.username}`, index + 1);
 
+
         state.setAccount(index, client.user.username, 'active');
         state.increment('activeAccounts');
         saveTokensFile();
@@ -457,40 +473,42 @@ async function startAccount(index, token) {
         startTimers();
     });
 
-    client.on('messageCreate', async (message) => {
-        if (message.author.id !== adminID) return;
-        if (!message.content.startsWith(prefix)) return;
+    if (commandsEnabled) {
+        client.on('messageCreate', async (message) => {
+            if (message.author.id !== adminID) return;
+            if (!message.content.startsWith(prefix)) return;
 
-        const args = message.content.slice(prefix.length).trim().split(/ +/);
-        const cmd = args.shift().toLowerCase();
+            const args = message.content.slice(prefix.length).trim().split(/ +/);
+            const cmd = args.shift().toLowerCase();
 
-        const command = commands.get(cmd);
-        if (command) {
-            state.increment('commandsUsed');
-            Logger.command(`!${cmd} used by ${message.author.username}`, index + 1);
+            const command = commands.get(cmd);
+            if (command) {
+                state.increment('commandsUsed');
+                Logger.command(`!${cmd} used by ${message.author.username}`, index + 1);
 
-            try {
-                await command.execute({
-                    message,
-                    client,
-                    isPaused,
-                    setPaused: v => {
-                        isPaused = v;
-                        state.set('isPaused', v);
-                    },
-                    clearAllTimers,
-                    startTimers,
-                    sendQueue,
-                    state,
-                });
-            } catch (err) {
-                Logger.error(`Command error: ${cmd} - ${err.message}`);
                 try {
-                    await message.reply('❌ An error occurred while executing the command.');
-                } catch { }
+                    await command.execute({
+                        message,
+                        client,
+                        isPaused,
+                        setPaused: v => {
+                            isPaused = v;
+                            state.set('isPaused', v);
+                        },
+                        clearAllTimers,
+                        startTimers,
+                        sendQueue,
+                        state,
+                    });
+                } catch (err) {
+                    Logger.error(`Command error: ${cmd} - ${err.message}`);
+                    try {
+                        await message.reply('❌ An error occurred while executing the command.');
+                    } catch { }
+                }
             }
-        }
-    });
+        });
+    }
 
     try {
         await client.login(token.trim());
@@ -563,7 +581,6 @@ tokenWatcher.on('tokenAdded', ({ index, token }) => {
 });
 
 tokenWatcher.on('tokensRemoved', ({ indices }) => {
-    // indices are already sorted from highest to lowest
     for (const index of indices) {
         if (clientCleanups[index]) {
             clientCleanups[index]();
@@ -588,7 +605,6 @@ tokenWatcher.on('tokensRemoved', ({ indices }) => {
         clientCleanups.splice(index, 1);
     }
 
-    // Rebuild accountMap with corrected indices
     const oldMap = state.getAccountMap();
     const remaining = [];
     for (const [idx, info] of oldMap) {

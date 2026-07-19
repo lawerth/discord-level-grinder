@@ -48,19 +48,25 @@ token3
     "channel_id_3"
   ],
   "interval": 60,
-  "adminID": "your_discord_id",
-  "prefix": "!"
+  "commands": {
+    "enabled": true,
+    "prefix": "!",
+    "adminID": "your_discord_id"
+  }
 }
 ```
 
 ### Configuration Options
 
-| Key                                | Type   | Required                    | Description                                              |
-| ---------------------------------- | ------ | --------------------------- | -------------------------------------------------------- |
-| `channels`                         | array  | ✅                           | List of channel IDs for random message sending           |
-| `interval`                         | number | ✅                           | Interval in seconds between random messages              |
-| `adminID`                          | string | ✅                           | Discord user ID allowed to run commands                  |
-| `prefix`                           | string | ✅                           | Command prefix (e.g. `"!"`)                              |
+| Key                  | Type    | Required | Description                                     |
+| -------------------- | ------- | -------- | ----------------------------------------------- |
+| `channels`           | array   | ✅       | List of channel IDs for random message sending  |
+| `interval`           | number  | ✅       | Interval in seconds between random messages     |
+| `commands.enabled`   | boolean | ✅       | Enable or disable admin commands                |
+| `commands.prefix`    | string  | ✅*      | Command prefix (e.g. `"!"`)                     |
+| `commands.adminID`   | string  | ✅*      | Discord user ID allowed to run commands         |
+
+> *\* Required only when `commands.enabled` is `true`.*
 
 
 > 📝 Random sentences are loaded from a separate `data/sentences.json` file in the project root.
