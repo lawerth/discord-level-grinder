@@ -455,11 +455,37 @@ async function startAccount(index, token) {
         accountUsername = client.user.username;
         Logger.success(`Logged in as ${client.user.username}`, index + 1);
 
-        // Fetch user settings from API to restore the custom status natively
+        // Fetch user settings from API to restore the custom status
+        let savedCustomStatus = null;
         try {
             await client.settings.fetch();
+            savedCustomStatus = client.settings.customStatus || null;
+            // Remove presence from ws options so future reconnections
+            // don't send activities: [] which clears the custom status
+            delete client.options.ws.presence;
         } catch (err) {
-            Logger.debug(`Could not fetch settings for ${client.user.username}: ${err.message}`, index + 1);
+            Logger.warning(`Could not fetch settings for ${client.user.username}: ${err.message}`, index + 1);
+        }
+
+        // Periodically re-apply custom status to prevent it from being
+        // cleared by gateway reconnections or USER_SETTINGS_UPDATE events
+        if (savedCustomStatus) {
+            const STATUS_REFRESH_INTERVAL = 30 * 60 * 1000;
+            const statusTimer = setInterval(async () => {
+                if (isInvalidated || !client.user) return;
+                try {
+                    await client.settings.fetch();
+                } catch {}
+            }, STATUS_REFRESH_INTERVAL);
+
+            const originalCleanup = cleanupFn;
+            const extendedCleanup = () => {
+                clearInterval(statusTimer);
+                originalCleanup();
+            };
+            clientCleanups[index] = extendedCleanup;
+            const timerIdx = allTimerCleanups.indexOf(originalCleanup);
+            if (timerIdx !== -1) allTimerCleanups[timerIdx] = extendedCleanup;
         }
 
         state.setAccount(index, client.user.username, 'active');
