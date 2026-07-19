@@ -249,7 +249,6 @@ process.on('exit', () => {
 async function startAccount(index, token) {
     const client = new Client({
         sweepInterval: 300,
-        presence: false,
         ws: {
             capabilities: 30717,
             agent: wsAgent,
@@ -456,6 +455,12 @@ async function startAccount(index, token) {
         accountUsername = client.user.username;
         Logger.success(`Logged in as ${client.user.username}`, index + 1);
 
+        // Fetch user settings from API to restore the custom status natively
+        try {
+            await client.settings.fetch();
+        } catch (err) {
+            Logger.debug(`Could not fetch settings for ${client.user.username}: ${err.message}`, index + 1);
+        }
 
         state.setAccount(index, client.user.username, 'active');
         state.increment('activeAccounts');
