@@ -68,9 +68,6 @@ token3
 
 > *\* Required only when `commands.enabled` is `true`.*
 
-
-> 📝 Random sentences are loaded from a separate `data/sentences.json` file in the project root.
-
 ---
 
 ## 💡 Available Commands

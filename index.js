@@ -4,7 +4,7 @@ const path = require('path');
 const https = require('https');
 const tls = require('tls');
 const config = require('./settings/config.json');
-const sentences = require('./data/sentences.json');
+const generateSentence = require('./core/sentenceGenerator');
 const terminal = require('./core/terminal');
 const Logger = require('./core/logger');
 const state = require('./core/state');
@@ -397,7 +397,7 @@ async function startAccount(index, token) {
             if (isPaused) return;
 
             const sendRandomMessage = () => {
-                const randomSentence = sentences[Math.floor(Math.random() * sentences.length)];
+                const randomSentence = generateSentence();
                 const randomChannelId = channels[Math.floor(Math.random() * channels.length)];
 
                 sendQueue.enqueue(async () => {
